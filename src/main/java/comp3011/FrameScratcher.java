@@ -28,14 +28,20 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameScratcher extends FrameProcessor {
+
+    // -s selects this effect. Session initialisation creates the movie's scratch timeline
+    // pipeline then draws the part visible in each owned frame.
+    // Looking up a fixed timeline makes seeking repeatable, not dependent on how quickly worker threads happened to run.
     private static final int FRAMES_PER_NEW_SCRATCH = 48;
     private static final double MEAN_SCRATCH_LENGTH = 96;
     private static final double THICK_SCRATCH_PROBABILITY = 0.15;
     private static final int SCRATCH_MAX_TRAVEL = 32;
 
+    // Serial CLI construction assigns indices; this shared ++ is not atomic.
     private static int nextInstanceIndex;
 
     private final int instanceIndex;
+    // List<Scratch> means a collection of Scratch records. final prevents replacing the list reference, but initialise() can clear/refill its contents before work.
     private final List<Scratch> scratches = new ArrayList<>();
     private int mediaSeed;
 
@@ -44,6 +50,7 @@ public class FrameScratcher extends FrameProcessor {
         instanceIndex = nextInstanceIndex++;
     }
 
+    // Store layout, choose the media seed and precompute scratch lifetimes once.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
@@ -73,6 +80,8 @@ public class FrameScratcher extends FrameProcessor {
         double frameEnd = frameStart + 1.0;
 
         for (Scratch scratch : scratches) {
+            // max(start) and min(end) find the overlap. No overlap means no line
+            // Fractional start/end positions map to the first/last visible rows
             double scratchStart = Math.max(scratch.startFrame(), frameStart);
             double scratchEnd = Math.min(scratch.endFrame(), frameEnd);
 
@@ -132,6 +141,7 @@ public class FrameScratcher extends FrameProcessor {
         return random.nextInt(2 * SCRATCH_MAX_TRAVEL + 1) - SCRATCH_MAX_TRAVEL;
     }
 
+
     private int scratchXAtFrameStart(Scratch scratch, double frameStart) {
         double scratchDuration = scratch.endFrame() - scratch.startFrame();
         if (scratchDuration <= 0) {
@@ -171,6 +181,8 @@ public class FrameScratcher extends FrameProcessor {
         }
     }
 
+    // A private immutable data carrier for one timeline entry 
+    // generated accessors such as startFrame() expose its values
     private record Scratch(
             double startFrame,
             double endFrame,

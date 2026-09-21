@@ -16,7 +16,11 @@ package comp3011;
  * Keeping number/time with the frame allows ordered effects and accurate playback.
  * - timestampUs is microseconds, not milliseconds or a calendar timestamp.
  */
+// PlaybackSession creates this alongside an image. 
+// FramePipeline carries both together: effects use frameNumber for repeatable patterns, and the model uses timestampUs for presentation timing.
 public record InfoFrame(
+        // Position in the source movie, not the number of worker tasks completed.
         int frameNumber,
+        // A long holds the time in microseconds: 1 second = 1,000,000 microseconds.
         long timestampUs) {
 }

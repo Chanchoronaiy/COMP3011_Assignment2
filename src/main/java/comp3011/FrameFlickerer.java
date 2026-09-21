@@ -26,8 +26,12 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameFlickerer extends FrameProcessor {
+
+    // -f creates an instance during serial option parsing. The session initialises its media seed, then its pipeline stage dims each owned frame in place.
     private static final double FLICKER_PERCENTAGE_SD = 5.0;
 
+    // static shares this counter across instances. ++ assigns distinct sequence
+    // positions during serial construction. It is not an atomic/thread-safe counter.
     private static int nextInstanceIndex;
 
     private final int instanceIndex;
@@ -38,12 +42,16 @@ public class FrameFlickerer extends FrameProcessor {
         instanceIndex = nextInstanceIndex++;
     }
 
+    // super.initialise stores common metadata; the seed varies repeated -f effects.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         mediaSeed = saltedMediaSeed(videoInfo.mediaName(), instanceIndex);
     }
 
+    //----------VALIDATE / CHOOSE THIS FRAME'S DIMMING----------
+    //recap: @Override implements the base class method. Return skips an absent image
+    // throw reports unsupported buffer types or pixel layouts to the caller.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -62,6 +70,8 @@ public class FrameFlickerer extends FrameProcessor {
             throw new Exception("FrameFlickerer requires at least one image channel");
         }
 
+        // nextGaussian gives a bell-shaped variation. abs makes dimming positive;
+        // max prevents a negative brightness scale. The frame seed makes seeks repeatable.
         Random random = new Random((long) mediaSeed + info.frameNumber());
         double dimmingPercentage = Math.abs(random.nextGaussian()) * FLICKER_PERCENTAGE_SD;
         double brightnessScale = Math.max(0.0, 100.0 - dimmingPercentage) / 100.0;
@@ -69,6 +79,8 @@ public class FrameFlickerer extends FrameProcessor {
         dimFrame(pixels, brightnessScale);
     }
 
+    // Build 256 scaled byte values once for this frame, then use array indexing
+    // instead of multiplying every channel. The loops skip row-padding bytes.
     private void dimFrame(ByteBuffer pixels, double brightnessScale) {
         byte[] dimLookup = new byte[256];
         for (int value = 0; value < dimLookup.length; value++) {
@@ -88,6 +100,7 @@ public class FrameFlickerer extends FrameProcessor {
         }
     }
 
+    // Keep a rounded channel value in the legal byte-intensity range 0..255.
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(value, max));
     }

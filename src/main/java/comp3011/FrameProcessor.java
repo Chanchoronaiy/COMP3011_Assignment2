@@ -30,6 +30,10 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public abstract class FrameProcessor {
+
+    // FrameProcessorOption constructs subclasses such as FrameMottler. The
+    // pipeline holds them as FrameProcessor references and calls the matching subclass's process().
+    //  This base class itself does not start a thread.
 //----------COMMON EFFECT CONTRACT----------
 // abstract = a base type that cannot itself be instantiated with new.
 // Subclasses use extends FrameProcessor, inherit metadata/helper methods, and implement process(). protected allows access in subclasses (and package)
@@ -41,6 +45,8 @@ public abstract class FrameProcessor {
     // called before effect threads start. 
     // !!! NOT safe to reinitialise an effect while an older session still processes frames with that instance
     public void initialise(InfoVideo videoInfo) throws Exception {
+        // this.videoInfo is the object's field; videoInfo is the method argument.
+        // Save the layout once so subclasses can address the image's pixels.
         this.videoInfo = videoInfo;
     }
 
@@ -51,9 +57,13 @@ public abstract class FrameProcessor {
     // A seed produces repeatable pseudo-random patterns, not cryptographic safety.
     // Retain the starter's seed inputs so threaded/reference pixel tests agree.
     protected int saltedMediaSeed(String mediaName, int instanceIndex) {
+        // Different instance indices vary repeated effects such as -ss. This is
+        // not a globally unique identifier: hashes/integer sums can collide.
         return hashMediaName(mediaName) + instanceIndex;
     }
 
+    // CRC32 is a repeatable checksum of the name's UTF-8 bytes, not encryption.
+    // The cast keeps the 32-bit bit pattern as Java's signed int seed.
     private int hashMediaName(String mediaName) {
         CRC32 crc = new CRC32();
         byte[] bytes = mediaName.getBytes(StandardCharsets.UTF_8);

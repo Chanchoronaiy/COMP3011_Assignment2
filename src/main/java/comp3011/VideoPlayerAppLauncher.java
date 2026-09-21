@@ -24,6 +24,9 @@ package comp3011;
  */
 public class VideoPlayerAppLauncher {
 
+    // Launcher -> VideoPlayerApp -> controller/model/view. 
+    // This is a small entry point, not another implementation of the playback model.
+
     // delegate to the real app's main. do not create a second player or effect list.
     // This bridge does not bundle dependencies into the ordinary Maven JAR.
     public static void main(String[] args) {

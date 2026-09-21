@@ -27,11 +27,17 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameNumberer extends FrameProcessor {
+
+    // -n selects this effect. The pipeline supplies InfoFrame.frameNumber(), and
+    // this draws that number INTO the image. it is not a separate JavaFX label.
+    // Its position in the effect list matters: later effects can alter the digits.
     private static final int TILE_WIDTH = 5;
     private static final int TILE_HEIGHT = 7;
     private static final int TILE_SPACING = 1;
     private static final int MARGIN = 1;
 
+    // Each power of two represents one segment. 
+    // | combines segment bits in a digit's mask; & later tests whether a particular segment should be drawn.
     private static final int TOP = 1;
     private static final int UPPER_LEFT = 2;
     private static final int UPPER_RIGHT = 4;
@@ -57,6 +63,8 @@ public class FrameNumberer extends FrameProcessor {
     public FrameNumberer() {
     }
 
+    //----------VALIDATE IMAGE / POSITION THE DIGITS----------
+    // absent image returns immediately; unsupported layouts throw an exception.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -75,6 +83,8 @@ public class FrameNumberer extends FrameProcessor {
             throw new Exception("FrameNumberer requires at least one image channel");
         }
 
+        // Convert a nonnegative frame number to text. Width includes one tile per
+        // digit plus gaps; subtract from image size to anchor it at bottom-right.
         String text = Integer.toString(Math.max(0, info.frameNumber()));
         int textWidth = text.length() * TILE_WIDTH + (text.length() - 1) * TILE_SPACING;
         int textHeight = TILE_HEIGHT;
@@ -88,6 +98,8 @@ public class FrameNumberer extends FrameProcessor {
         }
 
         for (int i = 0; i < text.length(); i++) {
+            // Digit characters are consecutive: '7' - '0' gives integer 7.
+            // Paint a black tile first so the white segments remain readable.
             int digit = text.charAt(i) - '0';
             int tileX = startX + i * (TILE_WIDTH + TILE_SPACING);
             fillRectangle(pixels, tileX, startY, TILE_WIDTH, textHeight, 0);
@@ -95,6 +107,7 @@ public class FrameNumberer extends FrameProcessor {
         }
     }
 
+    // (segments & TOP) != 0 asks whether the TOP bit is set.
     private void drawDigit(ByteBuffer pixels, int tileX, int tileY, int digit) {
         int segments = DIGIT_SEGMENTS[digit];
 
@@ -114,18 +127,21 @@ public class FrameNumberer extends FrameProcessor {
             drawHorizontalSegment(pixels, tileX, tileY, 5);
     }
 
+    // 3 white pixels across, relative to this digit's top-left tile corner.
     private void drawHorizontalSegment(ByteBuffer pixels, int tileX, int tileY, int y) {
         setPixel(pixels, tileX + 1, tileY + y, 255);
         setPixel(pixels, tileX + 2, tileY + y, 255);
         setPixel(pixels, tileX + 3, tileY + y, 255);
     }
 
+    // 3 white pixels down. These two helpers form all seven segment shapes.
     private void drawVerticalSegment(ByteBuffer pixels, int tileX, int tileY, int x, int y) {
         setPixel(pixels, tileX + x, tileY + y, 255);
         setPixel(pixels, tileX + x, tileY + y + 1, 255);
         setPixel(pixels, tileX + x, tileY + y + 2, 255);
     }
 
+    // Fill a tile row-by-row using setPixel; exclusive < end bounds avoid overlap.
     private void fillRectangle(
             ByteBuffer pixels,
             int x,
@@ -140,6 +156,9 @@ public class FrameNumberer extends FrameProcessor {
         }
     }
 
+    //----------PIXEL ADDRESSING----------
+    // y * stride skips complete rows; x * channels finds the pixel in that row.
+    // Setting every channel to the same intensity produces black (0) or white (255).
     private void setPixel(ByteBuffer pixels, int x, int y, int value) {
         int base = y * videoInfo.imageStride() + x * videoInfo.imageChannels();
         byte byteValue = (byte) value;

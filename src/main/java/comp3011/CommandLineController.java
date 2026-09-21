@@ -104,7 +104,7 @@ public class CommandLineController {
                 frameProcessors.add(effect.createProcessor());
             } else if (arg.startsWith("-") && !arg.startsWith("--") && arg.length() > 1) {
                 //----------STACKED SHORT OPTIONS----------
-                // Read left to right: -jfddn must not become a set or be sorted.
+                // Read left to right: -jfddn (jitter, flicker, dust.hair mask, dusk, draw frame number)must not become a set or be sorted.
                 for (int i = 1; i < arg.length(); i++) parseShortOption(arg.charAt(i));
             } else if ("--help".equals(arg)) {
                 helpRequested = true;

@@ -25,6 +25,10 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameVignetter extends FrameProcessor {
+
+    // -v selects this effect. The session builds size-dependent lookup tables
+    // before the pipeline starts; process() darkens edges of each owned image.
+    // This changes pixels, not the window's dimensions or screen placement.
     private static final double EDGE_FADE_PERCENTAGE = 40.0;
 
     private byte[][] xLookups;
@@ -34,12 +38,14 @@ public class FrameVignetter extends FrameProcessor {
         super();
     }
 
+    // Initialisation is per media/session, not per pixel or display refresh.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         buildLookups();
     }
 
+    // Guard clauses skip absent images and reject unsupported layouts before using the metadata to calculate byte indices.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -61,11 +67,14 @@ public class FrameVignetter extends FrameProcessor {
         vignetteFrame(pixels);
     }
 
+    // Separate axis tables avoid recalculating the fading formula in every frame.
     private void buildLookups() {
         xLookups = buildAxisLookups(videoInfo.imageWidth());
         yLookups = buildAxisLookups(videoInfo.imageHeight());
     }
 
+    // A 2D Java array: lookups[position][inputIntensity] returns the faded byte.
+    // Round before casting. clamp keeps values within 0..255.
     private byte[][] buildAxisLookups(int size) {
         byte[][] lookups = new byte[size][256];
         double[] envelope = buildGaussianEnvelope(size);
@@ -103,8 +112,6 @@ public class FrameVignetter extends FrameProcessor {
             return envelope;
         }
 
-        // Gaussian envelope: exp(-d^2 / (2 sigma^2)).
-        // Choose sigma so that the centre of each edge has the requested fade.
         double sigma = centre / Math.sqrt(-2.0 * Math.log(edgeScale));
 
         for (int position = 0; position < size; position++) {
@@ -139,6 +146,7 @@ public class FrameVignetter extends FrameProcessor {
         }
     }
 
+    // Overloaded helpers restrict integer intensities or decimal scale values
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(value, max));
     }

@@ -18,16 +18,24 @@ package comp3011;
  * - frameRate is fractional fps; intFrameRate is rounded 
  * - frameDurationUs is the approximate microseconds per frame. Do not confuse row padding with a channel.
  */
+
+// PlaybackSession reads the decoder's metadata and passes this record to every effect's initialise(). 
+// FrameProcessor stores it for later pixel calculations. 
 public record InfoVideo(
+        // Name also contributes to deterministic effect seeds; count describes length.
         String mediaName,
         int totalVideoFrames,
+        // Width/height are pixels. Depth is the sample type/bit-depth indicator.
         int imageWidth,
         int imageHeight,
         int imageDepth,
+        // Channels per pixel and distance between row starts describe memory layout.
         int imageChannels,
         int imageStride,
+        // Timing values: fractional frames/second, rounded fps, approximate frame duration.
         double frameRate,
         int intFrameRate,
         int frameDurationUs,
+        // FFmpeg's numeric identifier for the decoded pixel layout, not a colour value.
         int pixelFormat) {
 }

@@ -27,6 +27,11 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FramePepperer extends FrameProcessor {
+
+    // -p selects this effect. Its pipeline stage paints irregular dark spots
+    // into an owned frame using the layout supplied by PlaybackSession.
+    // The constants tune how often marks occur and their size/softness.
+    // image-effect maths, separate from the background pipeline's scheduling.
     private static final double PEPPER_MARKS_PER_SECOND = 10.0;
     private static final double MIN_PEPPER_SIZE_PERCENTAGE = 0.25;
     private static final double MAX_PEPPER_SIZE_PERCENTAGE = 2.5;
@@ -41,6 +46,8 @@ public class FramePepperer extends FrameProcessor {
     private static final double MAX_BOUNDARY_WARP = 0.22;
     private static final int SEED_SALT = 0x50455050;
 
+    // Assigned during serial CLI construction so repeated -p effects differ
+    // shared ++ counter is not atomic and is not a thread-safety mechanism.
     private static int nextInstanceIndex;
 
     private final int instanceIndex;
@@ -51,12 +58,16 @@ public class FramePepperer extends FrameProcessor {
         instanceIndex = nextInstanceIndex++;
     }
 
+    // super stores layout metadata. the salt separates this effect's seed pattern.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         mediaSeed = saltedMediaSeed(videoInfo.mediaName(), instanceIndex + SEED_SALT);
     }
 
+    //----------VALIDATE / GENERATE FRAME-SPECIFIC MARKS----------
+    // Return for absent/empty images. throw for layouts this byte algorithm cannot address. 
+    // Movie + frame seeds reproduce the marks when revisiting a frame.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -86,6 +97,8 @@ public class FramePepperer extends FrameProcessor {
         }
     }
 
+    // Desired average marks/second divided by fps gives the mean count/frame.
+    // Use a positive rounded-fps fallback if the fractional rate is unavailable.
     private double pepperMarksPerFrame() {
         if (videoInfo.frameRate() <= 0.0) {
             return PEPPER_MARKS_PER_SECOND / Math.max(1, videoInfo.intFrameRate());
@@ -93,10 +106,11 @@ public class FramePepperer extends FrameProcessor {
         return PEPPER_MARKS_PER_SECOND / videoInfo.frameRate();
     }
 
+    // XOR (^) and unsigned shift (>>>) mix the movie/frame bits into a repeatableseed. 
     private long seedForFrame(int frameNumber) {
         long seed = Integer.toUnsignedLong(mediaSeed) + Integer.toUnsignedLong(frameNumber);
 
-        seed ^= seed >>> 30;
+        seed ^= seed >>> 30; //hex
         seed *= 0xbf58476d1ce4e5b9L;
         seed ^= seed >>> 27;
         seed *= 0x94d049bb133111ebL;
@@ -104,6 +118,8 @@ public class FramePepperer extends FrameProcessor {
         return seed;
     }
 
+    // Poisson sampling produces a varying integer mark count around the mean
+    // do/while executes before its test. last draw ends the counting loop.
     private int nextPoisson(Random random, double mean) {
         double stopThreshold = Math.exp(-mean);
         double product = 1.0;
@@ -116,6 +132,7 @@ public class FramePepperer extends FrameProcessor {
 
         return count - 1;
     }
+
 
     private void drawRandomPepperMark(ByteBuffer pixels, Random random) {
         double baseSize = randomSize(random);
@@ -193,6 +210,8 @@ public class FramePepperer extends FrameProcessor {
             for (int x = minX; x <= maxX; x++) {
                 double dx = x + 0.5 - centreX;
                 double dy = y + 0.5 - centreY;
+                // Trigonometry rotates into the spot's local axes. Dividing by
+                // radii lets the distance test work like a circle in this space.
                 double localX = (dx * cos + dy * sin) / radiusX;
                 double localY = (-dx * sin + dy * cos) / radiusY;
                 double angle = Math.atan2(localY, localX);
@@ -201,6 +220,7 @@ public class FramePepperer extends FrameProcessor {
                 double edgeStart = Math.max(0.0, warpedBoundary - edgeSoftness);
 
                 if (distance < warpedBoundary) {
+                    // ? : chooses full interior coverage or a fading edge value.
                     double coverage = distance <= edgeStart
                             ? 1.0
                             : (warpedBoundary - distance) / Math.max(0.0001, warpedBoundary - edgeStart);
@@ -211,6 +231,8 @@ public class FramePepperer extends FrameProcessor {
         }
     }
 
+    // Pixel index = row stride + pixel's channel offset. Apply the same darkness to each channel
+    //  unsigned conversion avoids negative intensity arithmetic.
     private void darkenPixel(ByteBuffer pixels, int x, int y, double alpha) {
         int base = y * videoInfo.imageStride() + x * videoInfo.imageChannels();
         double scale = 1.0 - alpha;

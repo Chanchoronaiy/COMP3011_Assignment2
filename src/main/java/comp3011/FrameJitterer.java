@@ -4,7 +4,7 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. Touch Chanchoronaiy (a1978787)
+ *   2. Touch Chanchoronaiy (a1978787), added notes
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -27,8 +27,13 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameJitterer extends FrameProcessor {
+
+    // -j selects this effect. It shifts pixels WITHIN the image, not the window.
+    // A single pipeline stage owns its reusable source/black-row arrays, so two
+    // frames must not call this same instance concurrently.
     private static final int SEED_SALT = 0x4a495454;
 
+    // Serial CLI construction assigns repeatable instance indices; ++ is not atomic.
     private static int nextInstanceIndex;
 
     private final int instanceIndex;
@@ -41,6 +46,8 @@ public class FrameJitterer extends FrameProcessor {
         instanceIndex = nextInstanceIndex++;
     }
 
+    // Allocate scratch once for the media layout. new byte[] starts filled with
+    // zeroes, so blackRow is already black. Stride includes any row padding.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
@@ -52,6 +59,8 @@ public class FrameJitterer extends FrameProcessor {
         blackRow = new byte[widthBytes];
     }
 
+    // No image returns early; unsupported byte layouts throw instead of using
+    // incorrect pixel addresses. Zero displacement needs no copying.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -81,6 +90,8 @@ public class FrameJitterer extends FrameProcessor {
         jitterFrame(pixels, xOffset, yOffset);
     }
 
+    // ^ and >>> mix the seed's bits (XOR and zero-filling right shift).
+    // Using movie/frame identifiers, not the current time, makes seeking repeatable.
     private long seedForFrame(int frameNumber) {
         long seed = Integer.toUnsignedLong(mediaSeed) + Integer.toUnsignedLong(frameNumber);
 
@@ -94,6 +105,8 @@ public class FrameJitterer extends FrameProcessor {
         return seed;
     }
 
+    // One sample in [0,1) selects a weighted outcome. Most frames move 0 rows,
+    // occasional frames move up/down one or two rows, rather than equally often.
     private int chooseVerticalOffset(Random random) {
         double sample = random.nextDouble();
         if (sample < 0.02) {
@@ -111,6 +124,7 @@ public class FrameJitterer extends FrameProcessor {
         return 2;
     }
 
+    //horizontal movement is rarer: usually 0, otherwise one column left/right.
     private int chooseHorizontalOffset(Random random) {
         double sample = random.nextDouble();
         if (sample < 0.02) {
@@ -122,6 +136,8 @@ public class FrameJitterer extends FrameProcessor {
         return 1;
     }
 
+    //----------COPY/ CLEAR/ SHIFT----------
+    // Save the original image first so overlapping source/destination areas do not overwrite pixels still needed. New exposed edges remain black.
     private void jitterFrame(ByteBuffer pixels, int xOffset, int yOffset) {
         int height = videoInfo.imageHeight();
         int width = videoInfo.imageWidth();
@@ -130,10 +146,13 @@ public class FrameJitterer extends FrameProcessor {
         int frameBytes = stride * height;
         int widthBytes = width * channels;
 
+        // duplicate() shares bytes but has its own position/limit. clear() resets
+        // that cursor for access; it DOES NOT erase pixels. get() makes the copy.
         ByteBuffer source = pixels.duplicate();
         source.clear();
         source.get(sourcePixels, 0, frameBytes);
 
+        // Clear visible image bytes row-by-row; leave any row padding alone.
         for (int y = 0; y < height; y++) {
             ByteBuffer destinationRow = pixels.duplicate();
             destinationRow.clear();
@@ -141,6 +160,8 @@ public class FrameJitterer extends FrameProcessor {
             destinationRow.put(blackRow, 0, widthBytes);
         }
 
+        // Clip the source/destination rectangles so only their overlapping image
+        // area is copied. abs is the number of rows/columns lost at the edges.
         int sourceYStart = Math.max(0, -yOffset);
         int destinationYStart = Math.max(0, yOffset);
         int rowsToCopy = height - Math.abs(yOffset);
@@ -153,6 +174,8 @@ public class FrameJitterer extends FrameProcessor {
         int destinationXByteStart = destinationXStart * channels;
         int rowBytesToCopy = pixelsToCopy * channels;
 
+        // Convert pixel coordinates to byte offsets; bulk put copies a whole
+        // surviving row from the saved array into the shifted destination.
         for (int row = 0; row < rowsToCopy; row++) {
             int sourceIndex = (sourceYStart + row) * stride + sourceXByteStart;
             int destinationIndex = (destinationYStart + row) * stride + destinationXByteStart;

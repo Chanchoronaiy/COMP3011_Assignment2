@@ -25,6 +25,10 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class FrameYellower extends FrameProcessor {
+
+    // -y selects this effect. 
+    // The session precomputes colour tables, and its pipeline stage applies them to BGR pixels before the model displays them.
+    // Kelvin describes colour temperature here, not the computer's temperature.
     private static final double SOURCE_KELVIN = 3200.0;
     private static final double DESTINATION_KELVIN = 2700.0;
 
@@ -36,12 +40,15 @@ public class FrameYellower extends FrameProcessor {
         super();
     }
 
+    // Prepare reusable tables once for the session rather than on every frame.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         buildLookups();
     }
 
+    // Guard clauses require an actual byte image with at least B, G and R channels.
+    // instanceof both checks the buffer type and captures it as pixels.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -63,6 +70,8 @@ public class FrameYellower extends FrameProcessor {
         yellowFrame(pixels);
     }
 
+    //----------FROM COLOUR TEMPERATURE TO CHANNEL TABLES----------
+    // A scale of 1 leaves a channel unchanged; less/more than 1 dims/boosts it.
     private void buildLookups() {
         // Approximate each colour temperature as the RGB colour of a black-body radiator.
         Rgb sourceWhite = kelvinToRgb(SOURCE_KELVIN);
@@ -87,6 +96,8 @@ public class FrameYellower extends FrameProcessor {
         return lookup;
     }
 
+    // This supplied approximation uses log/power curves in different temperature
+    // ranges. The ? : expression chooses one of two values, like a compact if/else.
     private Rgb kelvinToRgb(double kelvin) {
         // Empirical Kelvin-to-RGB approximation. Dividing by 100 is part of the
         // standard curve fit, whose branches approximate red-hot to blue-white light.

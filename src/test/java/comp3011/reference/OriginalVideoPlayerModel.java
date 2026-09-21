@@ -4,9 +4,9 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. Touch Chanchoronaiy (a1978787), test-fixture adaptation generated with Codex.
- *      Only class/package names and effect injection changed; playback is the supplied baseline.
- *      This class is test-only and is not included in the application JAR.
+ *   2. Touch Chanchoronaiy (a1978787), test file, with the help of codex.
+ *      changes: class/package names, effect injection, playback is the supplied baseline.
+ *      
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -43,8 +43,22 @@ import javafx.scene.image.Image;
  * decoupled from the JavaFX view.
  * </p>
  */
-// TEST HELPER - Supplied single-threaded playback baseline for DesktopPlaybackIT.
-// Kept only under test sources so comparisons are reproducible; not shipped in the player.
+
+/*
+----------OLD MODEL VS NEW MODEL (learning note)----------
+ A thread is a worker carrying out instructions. UI = the window and its controls.
+ Decoding turns the compressed video into frames (individual pictures).
+ Effects change those pictures, for example making them black and white.
+ OLD: this model handles decoding and effects on the JavaFX UI thread.
+      While that thread is busy with expensive effects, button/key handling can wait.
+ NEW: PlaybackSession decodes on a background thread; FramePipeline workers apply
+      the effects. The UI thread receives ready frames and handles the controls.
+      These jobs can overlap instead of all competing for the same UI thread.
+ WHY KEEP THIS OLD FILE? Tests compare it with the new player to check that the
+      pictures stay correct and to measure the performance difference. */
+
+// TEST HELPER -Supplied single-threaded playback baseline for DesktopPlaybackIT
+// kept only under test sources so comparisons are reproducible; not shipped in the player.
 public class OriginalVideoPlayerModel {
     private static final long NO_SEEK_REQUEST = -1; // Sentinel value used when no seek position is active.
     private static final long FIVE_SECONDS_US = 5_000_000L;
@@ -58,14 +72,11 @@ public class OriginalVideoPlayerModel {
     private final BiConsumer<Boolean, Boolean> playbackStateChangedHandler;
     private final Consumer<Boolean> audioOutputStateChangedHandler;
 
-    // This is the critical wiring that allows the framework (JavaFX) to call
-    // into our model logic every time it goes around its event loop. Every GUI
-    // system has an event loop so that button clicks, key presses and window
-    // resizes can be responded to. Most offer ways of running additional logic
-    // in either idle time (when there are no pending UI events to process) or
-    // on a regular heart beat, such as with this JavaFX AnimationTimer. Here
-    // we just create a little anonymous local subclass and override the handle
-    // method to call the method we want run every heart beat.
+    // This is the critical wiring that allows the framework (JavaFX) to call into our model logic every time it goes around its event loop. 
+    // Every GUI system has an event loop so that button clicks, key presses and window resizes can be responded to.
+    //  Most offer ways of running additional logic in either idle time (when there are no pending UI events to process) or
+    // on a regular heart beat, such as with this JavaFX AnimationTimer. 
+    // Here we just create a little anonymous local subclass and override the handle method to call the method we want run every heart beat.
     private final AnimationTimer playbackTimer = new AnimationTimer() {
         @Override
         public void handle(long now) {
@@ -73,13 +84,13 @@ public class OriginalVideoPlayerModel {
         }
     };
 
-    private File videoFile; // Path to the media that comes from the command line
-    private FFmpegFrameGrabber grabber; // This is the 3rd party video media decoder. It deals in JavaCV Frame objects.
-    private JavaFXFrameConverter converter; // Takes Frame objects to JavaFX Image objects, which can be put on screen.
+    private File videoFile; //path to the media that comes from the command line
+    private FFmpegFrameGrabber grabber; //this is the 3rd party video media decoder. It deals in JavaCV Frame objects.
+    private JavaFXFrameConverter converter; //takes Frame objects to JavaFX Image objects, which can be put on screen.
     private AudioPlayer audioPlayer; // This is ours. It has some real time buffering smarts.
     private PreparedFrame preparedFrame; // Ours, but is just an Image with some meta-data added.
-    private boolean prepareNextFrameQueued; // True only when the event loop needs to call our prepareNextFrame method.
-    private boolean playbackOpen; // True when playback is happening.
+    private boolean prepareNextFrameQueued; // True only when the event loop needs to call our prepareNextFrame method
+    private boolean playbackOpen; // True when playback is happening
     private boolean pauseRequested;
     private boolean audioOutputEnabled;
     private boolean audioAvailable;
@@ -226,9 +237,7 @@ public class OriginalVideoPlayerModel {
         closePlaybackResources();
 
         pauseRequested = initiallyPaused;
-        currentTimestampUs = initialRelativeSeekBaseUs != NO_SEEK_REQUEST
-                ? initialRelativeSeekBaseUs
-                : startTimestampUs;
+        currentTimestampUs = initialRelativeSeekBaseUs != NO_SEEK_REQUEST ? initialRelativeSeekBaseUs : startTimestampUs;
         relativeSeekBaseUs = initialRelativeSeekBaseUs;
 
         notifyStatusChanged(videoFile.getName());
@@ -371,9 +380,10 @@ public class OriginalVideoPlayerModel {
 
     // This is called on a heart beat by the GUI thread. We want to be co-operative here by (a) not blocking, and (b)
     // getting our required work out of the way quickly so that we can return control flow to the JavaFX event loop for
-    // handling user interaction with the GUI and rendering. We have three jobs: (1) keep audio flowing if sound is on,
-    // (2) display a frame if it is due and (3) prepare the next frame if we're in the window after the previous frame
-    // has gone to the display. We don't buffer frames here, just handling them one at a time. Not a great architecture,
+    // handling user interaction with the GUI and rendering. 
+    // We have three jobs: (1) keep audio flowing if sound is on, (2) display a frame if it is due and (3) 
+    // prepare the next frame if we're in the window after the previous frame has gone to the display. 
+    // We don't buffer frames here, just handling them one at a time. Not a great architecture,
     // living on the edge a bit, but can't do much better on a single thread.
     private void pumpPlayback(long now) {
         if (!playbackOpen) {

@@ -4,7 +4,7 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. Touch Chanchoronaiy (a1978787)
+ *   2. Touch Chanchoronaiy (a1978787), added documentatino for further understanding
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -27,6 +27,10 @@ import org.bytedeco.javacv.Frame;
 
 
 public class FrameBleeder extends FrameProcessor {
+
+    // -b selects this effect. PlaybackSession initialises its reusable arrays
+    // one pipeline stage owns them while process() adds glow to each image.
+    // The arrays are mutable, so the same instance cannot process two frames at once.
     private static final int MASK_BLOCK_SIZE = 4;
     private static final int BLUR_RADIUS = 3;
     private static final int BLEED_LUMINANCE_THRESHOLD = 150;
@@ -50,6 +54,9 @@ public class FrameBleeder extends FrameProcessor {
         super();
     }
 
+    //----------ALLOCATE A SMALL BRIGHTNESS MASK----------
+    // Ceiling-style integer division includes partial 4-by-4 image blocks at the edges. 
+    // Flat arrays store rows of mask values, not full colour pixels.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
@@ -62,6 +69,8 @@ public class FrameBleeder extends FrameProcessor {
         buildSamplingLookups();
     }
 
+    // Validate byte/BGR layout, then run three steps: find highlights, spread
+    // their influence, and add the warm glow to the original owned image.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -85,6 +94,9 @@ public class FrameBleeder extends FrameProcessor {
         applyBleed(pixels);
     }
 
+    //----------MAP FULL-SIZED PIXELS TO THE SMALL MASK----------
+    // Store neighbouring mask indices and blend fractions for each image axis.
+    // Reusing these tables avoids coordinate maths on every frame's every pixel.
     private void buildSamplingLookups() {
         xMaskLeft = new int[videoInfo.imageWidth()];
         xMaskBlend = new double[videoInfo.imageWidth()];
@@ -95,6 +107,9 @@ public class FrameBleeder extends FrameProcessor {
         buildAxisSamplingLookups(videoInfo.imageHeight(), maskHeight, yMaskTop, yMaskBlend);
     }
 
+    // Pixel-centre coordinates align image blocks with mask samples. 
+    // floor() selects the left/top neighbour; clamping keeps neighbours within the mask.
+    // A one-cell axis uses zero indices/fractions instead of dividing or overrunning
     private void buildAxisSamplingLookups(int imageSize, int maskSize, int[] maskStarts, double[] maskBlends) {
         if (imageSize <= 1 || maskSize <= 1) {
             for (int position = 0; position < imageSize; position++) {
@@ -119,6 +134,10 @@ public class FrameBleeder extends FrameProcessor {
         }
     }
 /* For each frame, buildBrightMask(ByteBuffer) identifies bright regions*/
+    //----------FIND HIGHLIGHTS----------
+    // Each mask cell keeps the brightest luminance in its image block. 
+    // BGR bytes become unsigned 0..255 intensities before the weighted brightness calculation.
+    // row * stride + column * channels addresses a full-image pixel.
     private void buildBrightMask(ByteBuffer pixels) {
         int width = videoInfo.imageWidth();
         int height = videoInfo.imageHeight();
@@ -152,6 +171,8 @@ public class FrameBleeder extends FrameProcessor {
         }
     }
 
+    // Ignore values at/below the highlight threshold. Map the rest to [0,1],
+    // then the supplied gamma power controls how strongly they contribute.
     private double thresholdedBrightness(int luminance) {
         if (luminance <= BLEED_LUMINANCE_THRESHOLD) {
             return 0.0;
@@ -161,11 +182,16 @@ public class FrameBleeder extends FrameProcessor {
         return Math.pow(normalised, BLEED_GAMMA);
     }
 
+    //----------SPREAD THE HIGHLIGHTS----------
+    // Two 1D box blurs create a rectangular 2D blur with less work than a nested
+    // 2D neighbourhood per cell. Separate arrays prevent reading half-updated values.
     private void blurBrightMask() {
         blurHorizontally(brightMask, horizontalBlurMask);
         blurVertically(horizontalBlurMask, blurredMask);
     }
 
+    // Average the seven horizontal samples (radius 3); repeat border values
+    // through clamping rather than reading outside the array.
     private void blurHorizontally(double[] source, double[] destination) {
         for (int y = 0; y < maskHeight; y++) {
             int rowStart = y * maskWidth;
@@ -184,6 +210,7 @@ public class FrameBleeder extends FrameProcessor {
         }
     }
 
+    // Same averaging down columns, taking the horizontal pass as input.
     private void blurVertically(double[] source, double[] destination) {
         for (int y = 0; y < maskHeight; y++) {
             for (int x = 0; x < maskWidth; x++) {
@@ -201,6 +228,7 @@ public class FrameBleeder extends FrameProcessor {
         }
     }
 
+    //----------ADD WARM GLOW TO BGR PIXELS----------
     private void applyBleed(ByteBuffer pixels) {
         int width = videoInfo.imageWidth();
         int height = videoInfo.imageHeight();
@@ -228,6 +256,8 @@ public class FrameBleeder extends FrameProcessor {
         }
     }
 
+    // Bilinear interpolation: blend two mask cells on the top row and two on
+    // the bottom row, then blend the row results. Gain is capped at strength 1.
     private double sampleBlurredMask(int x, int y) {
         int x0 = xMaskLeft[x];
         int x1 = Math.min(x0 + 1, maskWidth - 1);
@@ -242,10 +272,12 @@ public class FrameBleeder extends FrameProcessor {
         return Math.min(1.0, lerp(top, bottom, yBlend) * BLEED_MASK_GAIN);
     }
 
+    // Saturating addition: stop at white (255), rather than overflow and wrap dark.
     private byte boostedByte(byte value, int boost) {
         return (byte) Math.min(255, Byte.toUnsignedInt(value) + boost);
     }
 
+    // Overloaded integer/decimal helpers keep coordinates or strengths in range.
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(value, max));
     }
@@ -254,6 +286,7 @@ public class FrameBleeder extends FrameProcessor {
         return Math.max(min, Math.min(value, max));
     }
 
+    // Linear interpolation: blend 0 selects a, blend 1 selects b.
     private double lerp(double a, double b, double blend) {
         return a + (b - a) * blend;
     }

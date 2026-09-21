@@ -43,6 +43,10 @@ import javafx.scene.shape.StrokeLineCap;
  * </p>
  */
 public class VideoPlayerView {
+
+    // VideoPlayerApp creates the window, the controller wires these buttons to model actions. 
+    // The model supplies displayed images/status through callbacks.
+    // Only the JavaFX application thread should change these live UI nodes.
     //----------UI NODES / CONSTRUCTOR----------
     // Node is a visible/layout object. Parent can contain child nodes.
     // final fixes each stored reference, while text, icons and sizes can still be updated
@@ -114,6 +118,8 @@ public class VideoPlayerView {
         return root;
     }
 
+    // Expose the existing button objects so the controller can attach actions.
+    // A getter does not construct another button or start playback by itself.
     public Button getStartOverButton() {
         return startOverButton;
     }
@@ -142,14 +148,19 @@ public class VideoPlayerView {
         statusLabel.setText(status);
     }
 
+    // Display the already-converted JavaFX Image; effects/decoding happen elsewhere.
     public void setImage(Image image) {
         imageView.setImage(image);
     }
 
+    // Set the preferred layout size. 
+    // The constructor's bindings still adapt the ImageView when the user resizes the window, keeping the aspect ratio.
     public void setVideoDisplaySize(double width, double height) {
         videoPane.setPrefSize(width, height);
     }
 
+    // These icons show the AVAILABLE ACTION: while playing, offer pause.
+    //  while paused, offer play. Replacing the graphic does not pause/resume the model.
     public void showPauseAction() {
         pausePlayButton.setGraphic(createPauseIcon());
     }
@@ -158,10 +169,12 @@ public class VideoPlayerView {
         pausePlayButton.setGraphic(createPlayIcon());
     }
 
+    // Update the speaker graphic only; opening/muting the device is model work.
     public void showAudioEnabled(boolean audioEnabled) {
         audioButton.setGraphic(createAudioIcon(audioEnabled));
     }
 
+    // Disable/enable the controls together, for example while no playable video is ready.
     public void setPlaybackControlsDisabled(boolean disabled) {
         startOverButton.setDisable(disabled);
         backFiveButton.setDisable(disabled);
@@ -184,6 +197,8 @@ public class VideoPlayerView {
         setButtonTooltip(audioButton, "[A]");
     }
 
+    // event -> { ... } is a lambda callback: JavaFX runs it when that mouse
+    // event occurs, not immediately during setup. _ means the parameter is unused.
     private void setButtonTooltip(Button button, String text) {
         button.setOnMouseEntered(event -> {
             showTooltip(text, event.getSceneX(), event.getSceneY());
@@ -214,6 +229,8 @@ public class VideoPlayerView {
                         + "-fx-text-fill: black;");
     }
 
+    // Apply CSS/layout before positioning so the label's measured size is current.
+    // toFront raises the overlay without changing playback or creating a window.
     private void showTooltip(String text, double sceneX, double sceneY) {
         tooltipLabel.setText(text);
         tooltipLabel.setVisible(true);
@@ -240,6 +257,8 @@ public class VideoPlayerView {
 
 //----------REUSABLE BUTTON / ICON DRAWING----------
 // Helpers below build vector/canvas graphics instead of loading image files.
+    // The button receives clicks, not its decoration. Pick-on-bounds allows the
+    // whole rectangular area focus settings avoid tab-focus on these controls.
     private Button iconButton(Node icon) {
         Button button = new Button();
         icon.setMouseTransparent(true);
@@ -253,6 +272,7 @@ public class VideoPlayerView {
 
     // Decided to hand code icons here instead of using pre-drawn assets/resources, 
     // since the icons are simple and universally recognised and this one they will look better on different DPI displays.
+    //----------DRAWING THE REPLAY / SKIP SYMBOLS----------
     private Node createLoopIcon(boolean clockwise, String text) {
         Pane pane = new Pane();
         pane.setMinSize(ICON_SIZE, ICON_SIZE);

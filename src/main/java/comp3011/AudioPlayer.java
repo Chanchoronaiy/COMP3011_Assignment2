@@ -35,6 +35,11 @@ import org.bytedeco.javacv.Frame;
  * </p>
  */
 public class AudioPlayer implements AutoCloseable {
+
+    // PlaybackSession uses copySamples() to detach audio from decoder buffers.
+    // The model's separate AudioPlayer opens the device and writes those copies.
+    // Effects change video pixels, so they do not pass through this class.
+
 // AutoCloseable defines close(): try-with-resources can invoke it on exit.
 // not automatic thread safety. Keep each instance's mutable buffers/line on one owning thread. 
 // PCM = uncompressed numeric audio samples.
@@ -45,7 +50,7 @@ public class AudioPlayer implements AutoCloseable {
     private byte[] outputBuffer = new byte[0];
 
 //----------OPEN THE OUTPUT DEVICE----------
-// AudioFormat arguments: samples/second, bits/sample, channels, signed, bigEndian=false (least-significant byte first). 
+// AudioFormat arguments: samples/second, bits/sample, channels, signed, bigEndian=false (least-significant byte first)
 // throws reports device errors.
     public void open(int sampleRate, int channels) throws LineUnavailableException {
         if (sampleRate <= 0 || channels <= 0) {

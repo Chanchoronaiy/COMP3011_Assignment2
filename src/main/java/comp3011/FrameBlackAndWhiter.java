@@ -18,6 +18,10 @@ import org.bytedeco.javacv.Frame;
 /* Converts colour frames to greyscale.*/
 public class FrameBlackAndWhiter extends FrameProcessor {
 
+    // -w selects this FrameProcessor subclass. The session supplies image layout.
+    // a pipeline stage calls process() in the requested effect order.
+    //  It writes into its owned frame, so later effects receive the greyscale result.
+
     public FrameBlackAndWhiter() {
         super();
     }
@@ -26,6 +30,8 @@ public class FrameBlackAndWhiter extends FrameProcessor {
 writes that value back to every colour channel through convertFrame(ByteBuffer).*/
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
+        // Guard clauses leave non-image frames alone and reject layouts this
+        // algorithm cannot address. instanceof also binds the typed pixels variable.
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
             return;
         }
@@ -45,6 +51,9 @@ writes that value back to every colour channel through convertFrame(ByteBuffer).
         convertFrame(pixels);
     }
 
+    //----------TURN BGR PIXELS INTO GREY----------
+    // Nested loops visit rows, pixels and channels. 
+    // Stride is the distance between row starts, which may include padding; channels is the size of one pixel
     private void convertFrame(ByteBuffer pixels) {
         int height = videoInfo.imageHeight();
         int width = videoInfo.imageWidth();
@@ -59,6 +68,8 @@ writes that value back to every colour channel through convertFrame(ByteBuffer).
                 int b = Byte.toUnsignedInt(pixels.get(base));
                 int g = Byte.toUnsignedInt(pixels.get(base + 1));
                 int r = Byte.toUnsignedInt(pixels.get(base + 2));
+                // Unsigned values are 0..255. The weighted sum estimates brightness
+                // (green contributes most); equal channel values then appear grey.
                 byte luminance = (byte) ((54 * r + 183 * g + 19 * b) / 256);
 
                 for (int channel = 0; channel < channels; channel++) {
