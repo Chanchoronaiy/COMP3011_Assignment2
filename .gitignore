@@ -1,0 +1,5 @@
+# Maven generates compiled files and JARs here; keep source code in Git instead.
+/target/
+
+# macOS folder display settings are not part of the Java project.
+.DS_Store
