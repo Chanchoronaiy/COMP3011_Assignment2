@@ -120,7 +120,8 @@ class DesktopPlaybackIT {
             fx(() -> {
                 VideoPlayerView view = new VideoPlayerView();
                 stage = new Stage();
-                stage.setTitle("Video Player");
+                // Match the supplied title used by the real application window.
+                stage.setTitle("COMP3011 Video Player");
                 stage.setScene(new Scene(view.getRoot(), 500, 330));
                 stage.show();
                 // PRESENTATION CALLBACK: the model calls this when it has an Image ready for the view.

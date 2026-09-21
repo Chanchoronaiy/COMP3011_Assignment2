@@ -19,7 +19,8 @@ mvn clean verify
 
 `-a` enables sound. Effect flags may be short, long, stacked or mixed; order and
 repetitions are preserved. Quote video paths containing spaces inside `javafx.args`.
-The visible window title is **Video Player**.
+The visible window title is **COMP3011 Video Player**. The Maven project remains
+`VideoPlayerMultiThreaded`.
 
 Packaging creates `target/VideoPlayerMultiThreaded-0.1.jar`. This is a standard
 Maven JAR with external JavaFX/JavaCV dependencies, not a standalone fat JAR.

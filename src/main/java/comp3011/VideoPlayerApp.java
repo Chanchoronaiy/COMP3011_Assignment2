@@ -11,7 +11,7 @@
  * summary: previously passed launch settings only, now also passes the ordered effect list to the controller. 
  * WHY: command-line selection belongs at startup, not as hard-coded effects in the playback model.
  * + comments explain the supplied JavaFX startup/window code. I also added a method to resize the video display to fit the selected screen, 
- * and a method to align the scene to the selected screen., and changed title to Video Player.
+ * and a method to align the scene to the selected screen. The supplied window title is retained for compatibility.
  */
 package comp3011;
 
@@ -72,9 +72,9 @@ public class VideoPlayerApp extends Application {
         Scene scene = new Scene(controller.getView().getRoot());
         controller.installKeyboardShortcuts(scene);
 
-        // !! MODIFIED - my personal preference of changing title to Video player, 
-        // and added a method to resize the video display to fit the selected screen, and a method to align the scene to the selected screen.
-        stage.setTitle("Video Player");
+        // Keep the supplied window title for TITAN's exact-title lookup.
+        // This is separate from the Maven project name, VideoPlayerMultiThreaded.
+        stage.setTitle("COMP3011 Video Player");
         stage.setScene(scene);
         moveToSelectedScreen(stage);
         stage.setMaximized(commandLineController.isMaximiseRequested());
