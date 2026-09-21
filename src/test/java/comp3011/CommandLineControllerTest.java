@@ -62,12 +62,36 @@ class CommandLineControllerTest {
             assertFalse(command.shouldLaunchApplication());
         } finally { System.setOut(original); }
         String output = bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
-        assertTrue(output.startsWith("Usage: VideoPlayer [options] [video-file]\n\nOptions:\n"));
-        assertTrue(output.contains("\n\nFrame processors:\n"));
-        assertTrue(output.contains("  -w, --black-and-white  Convert frames to black and white\n"));
-        assertTrue(output.endsWith("\n\nFrame processors are applied in command-line order and may be repeated.\n\n"
-                + "Example: -nssnfwyvdjmbp numbers, scratches twice, numbers again, flickers,\n"
-                + "converts, warms, vignettes, dusts, jitters, mottles, bleeds, then peppers.\n"));
-        for (FrameProcessorOption option : FrameProcessorOption.values()) assertTrue(output.contains(option.helpLine()));
+        // TITAN compares the complete help text, including blank lines. Keep
+        // this expected text independent of helpLine() so formatting mistakes
+        // in the implementation cannot also change the expected test result.
+        String expected = """
+                Usage: VideoPlayer [options] [video-file]
+
+                Options:
+                  -h, --help         Show this help message
+                  -a, --audio        Play audio
+                  -x, --maximise     Open the player maximised
+                  -1, --monitor-1    Open the player on display 1
+                  -2, --monitor-2    Open the player on display 2
+
+                Frame processors:
+                  -n, --number-frames    Render the frame number onto each frame
+                  -s, --scratch-frames   Render vertical film scratches
+                  -f, --flicker-frames   Randomly dim frames
+                  -w, --black-and-white  Convert frames to black and white
+                  -y, --yellow-frames    Apply a warmer colour temperature
+                  -v, --vignette-frames  Darken the frame edges
+                  -d, --dust-frames      Render dust and hair marks
+                  -j, --jitter-frames    Randomly displace frames by a few pixels
+                  -m, --mottle-frames    Add cloudy emulsion mottling
+                  -b, --bleed-frames     Bleed light into frames
+                  -p, --pepper-frames    Pepper frames with dark spots/blotches
+
+                Frame processors are applied in command-line order and may be repeated.
+                Example: -nssnfwyvdjmbp numbers, scratches twice, numbers again, flickers,
+                converts, warms, vignettes, dusts, jitters, mottles, bleeds, then peppers.
+                """;
+        assertEquals(expected, output);
     }
 }
