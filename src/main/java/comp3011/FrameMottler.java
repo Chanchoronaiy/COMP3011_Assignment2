@@ -4,7 +4,8 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787), cache reset generated with Codex;
+ *      student review required before submission.
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -81,6 +82,9 @@ public class FrameMottler extends FrameProcessor {
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         mediaSeed = saltedMediaSeed(videoInfo.mediaName(), instanceIndex + SEED_SALT);
+        // Reinitialising for a different movie must not keep the previous
+        // movie's cached damage fields just because the segment number matches.
+        cachedDamageMaskSegment = Integer.MIN_VALUE;
         buildSamplingLookups();
         buildScaleLookups();
     }
