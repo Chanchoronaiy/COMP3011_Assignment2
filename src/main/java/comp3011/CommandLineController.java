@@ -4,7 +4,8 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787), modifications generated with Codex;
+ *      student review required before submission.
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -32,6 +33,7 @@ public class CommandLineController {
     private Integer displayId;
     private File videoFile;
     private String errorMessage;
+    private final List<FrameProcessor> frameProcessors = new ArrayList<>();
 
     public CommandLineController(String[] args) {
         this.args = args.clone();
@@ -46,6 +48,12 @@ public class CommandLineController {
 
     public File getVideoFile() {
         return videoFile;
+    }
+
+    public List<FrameProcessor> getFrameProcessors() {
+        // Copy the list structure so callers cannot change the parsed order.
+        // The model takes ownership of the mutable effect objects themselves.
+        return List.copyOf(frameProcessors);
     }
 
     public String getErrorMessage() {
@@ -75,15 +83,22 @@ public class CommandLineController {
     private void parse() {
         List<String> videoFiles = new ArrayList<>();
         for (String arg : args) {
-            if ("-h".equals(arg) || "--help".equals(arg)) {
+            FrameProcessorOption effect = FrameProcessorOption.fromLong(arg);
+            if (effect != null) {
+                frameProcessors.add(effect.createProcessor());
+            } else if (arg.startsWith("-") && !arg.startsWith("--") && arg.length() > 1) {
+                //----------STACKED SHORT OPTIONS----------
+                // Read left to right: -jfddn must not become a set or be sorted.
+                for (int i = 1; i < arg.length(); i++) parseShortOption(arg.charAt(i));
+            } else if ("--help".equals(arg)) {
                 helpRequested = true;
-            } else if ("-a".equals(arg) || "--audio".equals(arg)) {
+            } else if ("--audio".equals(arg)) {
                 audioRequested = true;
-            } else if ("-x".equals(arg) || "--maximise".equals(arg)) {
+            } else if ("--maximise".equals(arg)) {
                 maximiseRequested = true;
-            } else if ("-1".equals(arg) || "--monitor-1".equals(arg)) {
+            } else if ("--monitor-1".equals(arg)) {
                 setDisplayId(1);
-            } else if ("-2".equals(arg) || "--monitor-2".equals(arg)) {
+            } else if ("--monitor-2".equals(arg)) {
                 setDisplayId(2);
             } else if (arg.startsWith("-")) {
                 errorMessage = "Unknown option: " + arg;
@@ -107,6 +122,22 @@ public class CommandLineController {
         }
     }
 
+    private void parseShortOption(char flag) {
+        FrameProcessorOption effect = FrameProcessorOption.fromShort(flag);
+        if (effect != null) {
+            frameProcessors.add(effect.createProcessor());
+            return;
+        }
+        switch (flag) {
+            case 'h' -> helpRequested = true;
+            case 'a' -> audioRequested = true;
+            case 'x' -> maximiseRequested = true;
+            case '1' -> setDisplayId(1);
+            case '2' -> setDisplayId(2);
+            default -> errorMessage = "Unknown option: -" + flag;
+        }
+    }
+
     private void setDisplayId(int displayId) {
         if (this.displayId != null && this.displayId != displayId) {
             errorMessage = "Only one display option can be used";
@@ -124,5 +155,15 @@ public class CommandLineController {
         System.out.println("  -x, --maximise     Open the player maximised");
         System.out.println("  -1, --monitor-1    Open the player on display 1");
         System.out.println("  -2, --monitor-2    Open the player on display 2");
+        System.out.println();
+        System.out.println("Frame processors:");
+        for (FrameProcessorOption option : FrameProcessorOption.values()) {
+            System.out.println(option.helpLine());
+        }
+        System.out.println();
+        System.out.println("Frame processors are applied in command-line order and may be repeated.");
+        System.out.println();
+        System.out.println("Example: -nssnfwyvdjmbp numbers, scratches twice, numbers again, flickers,");
+        System.out.println("converts, warms, vignettes, dusts, jitters, mottles, bleeds, then peppers.");
     }
 }
