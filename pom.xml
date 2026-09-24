@@ -4,7 +4,8 @@
 
   Authors:
     1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
-    2. <student name and student number insert here upon modification>
+    2. Touch Chanchoronaiy (a1978787), modifications generated with Codex;
+       student review required before submission.
 
   Copyright 2026 Simon Ratcliffe
 -->
@@ -13,7 +14,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>comp3011</groupId>
-  <artifactId>VideoPlayerSingleThread</artifactId>
+  <artifactId>VideoPlayerMultiThreaded</artifactId>
   <version>0.1</version>
 
   <properties>
@@ -24,6 +25,13 @@
   </properties>
 
   <dependencies>
+    <!-- JUnit supplies focused regression tests; it is not shipped in the player. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.14.0</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-controls</artifactId>
@@ -38,6 +46,28 @@
 
   <build>
     <plugins>
+      <!-- Pin build tools so Maven on the marking machine uses the same rules. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.15.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive><manifest><mainClass>comp3011.VideoPlayerAppLauncher</mainClass></manifest></archive>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.openjfx</groupId>
         <artifactId>javafx-maven-plugin</artifactId>
