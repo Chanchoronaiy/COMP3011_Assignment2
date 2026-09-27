@@ -1,5 +1,8 @@
-# Maven generates compiled files and JARs here; keep source code in Git instead.
-/target/
-
-# macOS folder display settings are not part of the Java project.
+# Maven rebuilds these; they are not source files.
+target/
 .DS_Store
+.vscode/
+# Keep large videos out of the source repository.
+*.mp4
+*.mov
+*.mkv
