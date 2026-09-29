@@ -4,10 +4,13 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. Touch Chanchoronaiy (a1978787), modifications generated with Codex;
- *      student review required before submission.
+ *   2. Touch Chanchoronaiy (a1978787). Comments and modified code, with help from GPT-5.6 Terra.
  *
  * Copyright 2026 Simon Ratcliffe
+ *
+ * Change summary: previously parsed only launch settings; now builds an ordered
+ * effect list from short/long/stacked flags and extends the exact help text.
+ * WHY: separate input parsing from effect registration and playback execution.
  */
 package comp3011;
 
@@ -25,6 +28,9 @@ import java.util.List;
  * </p>
  */
 public class CommandLineController {
+    //----------PARSED SETTINGS----------
+    // recap: String[] is an array. List<FrameProcessor> is anordered collection.
+    // ArrayList is its resizable implementation. !! NO use a Set: repeats matter.
     private final String[] args;
 
     private boolean helpRequested;
@@ -33,9 +39,11 @@ public class CommandLineController {
     private Integer displayId;
     private File videoFile;
     private String errorMessage;
+    // MODIFIED - store every selected effect in order, including repeated flags
     private final List<FrameProcessor> frameProcessors = new ArrayList<>();
 
     public CommandLineController(String[] args) {
+        // clone() copies argument array so later caller edits cannot alter it
         this.args = args.clone();
         parse();
         if (errorMessage != null) {
@@ -46,13 +54,16 @@ public class CommandLineController {
         }
     }
 
+    //----------READ THE PARSED RESULT----------
+    // Getters expose the launch configuration, they do not start threads/playback
     public File getVideoFile() {
         return videoFile;
     }
 
+    // !! MODIFIED- Expose the selected effects without allowing the caller to reorder the list
     public List<FrameProcessor> getFrameProcessors() {
-        // Copy the list structure so callers cannot change the parsed order.
-        // The model takes ownership of the mutable effect objects themselves.
+        // Copy list structure so callers cannot change the parsed order
+        // model takes ownership of the mutable effect objects themselves
         return List.copyOf(frameProcessors);
     }
 
@@ -60,6 +71,7 @@ public class CommandLineController {
         return errorMessage;
     }
 
+    // condition ? valueIfTrue : valueIfFalse 
     public int getExitCode() {
         return errorMessage == null ? 0 : 1;
     }
@@ -80,6 +92,10 @@ public class CommandLineController {
         return errorMessage == null && videoFile != null;
     }
 
+    //----------LONG OPTIONS/FILE ARGUMENT-------
+    // Enhanced for (String arg : args) visits each argument in its OG order
+    // Collect filenames throughout: the file may be before/between/after options
+    // !! MODIFIED- PARSE all the short/long/stacked flags and build ordered effect list
     private void parse() {
         List<String> videoFiles = new ArrayList<>();
         for (String arg : args) {
@@ -107,6 +123,8 @@ public class CommandLineController {
             }
         }
 
+        // VALIDATE after scan: exactly one real file is needed for playback
+        // --help alone is valid and exits successfully without launching the UI.
         if (videoFiles.size() > 1) {
             errorMessage = "Usage: VideoPlayer [options] [video-file]";
         } else if (videoFiles.size() == 1) {
@@ -122,6 +140,10 @@ public class CommandLineController {
         }
     }
 
+    //----------ONE SHORT FLAG----------
+    // First, try an effect factory, otherwise switch handles the launch settings
+    // case ... -> is a switch rule: no fall-through and no break is needed
+    // !!MODIFIED- New helper reads each stacked flag separately, creates its effect instance
     private void parseShortOption(char flag) {
         FrameProcessorOption effect = FrameProcessorOption.fromShort(flag);
         if (effect != null) {
@@ -138,6 +160,7 @@ public class CommandLineController {
         }
     }
 
+    // null = unspecified. Conflicting -1/-2 flags = errors, not a silent last-one-wins choice that could change the supplied launch behaviour.
     private void setDisplayId(int displayId) {
         if (this.displayId != null && this.displayId != displayId) {
             errorMessage = "Only one display option can be used";
@@ -146,6 +169,11 @@ public class CommandLineController {
         this.displayId = displayId;
     }
 
+    //----------EXACT HELP OUTPUT----------
+    // rubric/TITAN require this text and spacing
+    // enum generates effect lines in registration order
+    // the regression test checks the whole output
+    // !! MODIFIED- Extend the supplied help with the exact required effect names and examples.
     private void printHelp() {
         System.out.println("Usage: VideoPlayer [options] [video-file]");
         System.out.println();

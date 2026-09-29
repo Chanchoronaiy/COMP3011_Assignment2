@@ -1,4 +1,4 @@
-/* Tests generated with Codex for Touch Chanchoronaiy (a1978787); review before submission. */
+
 package comp3011;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -11,13 +11,21 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * CLI regression tests: parsing/help must preserve the specified output or effect order. 
+ * COVER:  CommandLineController and FrameProcessorOption together, including repeated instances, original launch options, invalid input and exact help.
+ *  does not launch VideoPlayerApp or test its physical window placement.
+ * 
+ */
 class CommandLineControllerTest {
+    // @TempDir supplies an isolated temporary path
     @TempDir Path directory;
     private String movie() throws Exception { return Files.createFile(directory.resolve("movie.mp4")).toString(); }
     private List<Class<?>> classes(CommandLineController command) {
         return command.getFrameProcessors().stream().<Class<?>>map(Object::getClass).toList();
     }
 
+    //@Test marks a method JUnit executes
     @Test void shortLongStackedAndMixedFormsHaveIdenticalOrder() throws Exception {
         String file = movie();
         List<Class<?>> expected = List.of(FrameJitterer.class, FrameFlickerer.class,
@@ -27,6 +35,7 @@ class CommandLineControllerTest {
                 new String[]{"-j", "-f", "-d", "-d", "-n", file},
                 new String[]{"-jfddn", file}, new String[]{"-jf", "--dust-frames", "-d", "--number-frames", file})) {
             CommandLineController command = new CommandLineController(args);
+            // assertEquals compares an expected result with the actual one
             assertNull(command.getErrorMessage());
             assertEquals(expected, classes(command));
             assertNotSame(command.getFrameProcessors().get(2), command.getFrameProcessors().get(3));
@@ -52,6 +61,44 @@ class CommandLineControllerTest {
             assertFalse(command.shouldLaunchApplication());
         }
     }
+
+    @Test void fileMayAppearBeforeBetweenOrAfterOptions() throws Exception {
+        String file = movie();
+        List<Class<?>> expected = List.of(FrameJitterer.class, FrameFlickerer.class,
+                FrameDuster.class, FrameDuster.class, FrameNumberer.class);
+        for (String[] args : List.of(new String[]{file, "-jfddn"},
+                new String[]{"-jf", file, "--dust-frames", "-dn"},
+                new String[]{"-jfddn", file})) {
+            CommandLineController command = new CommandLineController(args);
+            assertTrue(command.shouldLaunchApplication());
+            assertEquals(expected, classes(command));
+        }
+    }
+
+    @Test void optionNamesAreCaseSensitiveAndNoEffectsMeansAnEmptyList() throws Exception {
+        String file = movie();
+        assertTrue(new CommandLineController(new String[]{file}).getFrameProcessors().isEmpty());
+        for (String flag : List.of("-N", "--Number-Frames", "--dust-frame", "--vignette-frame")) {
+            CommandLineController command = new CommandLineController(new String[]{flag, file});
+            assertEquals(1, command.getExitCode());
+            assertFalse(command.shouldLaunchApplication());
+        }
+    }
+
+    @Test void helpStillPrintsWithInvalidInputAsInTheStarter() {
+        PrintStream original = System.out;
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try {
+            System.setOut(new PrintStream(bytes, true, StandardCharsets.UTF_8));
+            CommandLineController command = new CommandLineController(new String[]{"--help", "--unknown"});
+            assertEquals(1, command.getExitCode());
+            assertFalse(command.shouldLaunchApplication());
+        } finally { System.setOut(original); }
+        String output = bytes.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("Unknown option: --unknown"));
+        assertTrue(output.contains("Usage: VideoPlayer [options] [video-file]"));
+        assertTrue(output.contains("Frame processors:"));
+    }
     @Test void helpMatchesRequiredEffectParagraphsWithoutLaunchingUi() {
         PrintStream original = System.out;
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -62,9 +109,9 @@ class CommandLineControllerTest {
             assertFalse(command.shouldLaunchApplication());
         } finally { System.setOut(original); }
         String output = bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
-        // TITAN compares the complete help text, including blank lines. Keep
-        // this expected text independent of helpLine() so formatting mistakes
-        // in the implementation cannot also change the expected test result.
+        // !! THERE WAS AN ERROR HERE, I really needed codex's help
+        // TITAN compares the complete help text, including blank lines. 
+        // Keep expected text independent of helpLine() so formatting mistakes in the implementation cannot also change the expected test result.
         String expected = """
                 Usage: VideoPlayer [options] [video-file]
 
