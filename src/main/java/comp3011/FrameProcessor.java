@@ -4,9 +4,10 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787). I added my own notes
  *
  * Copyright 2026 Simon Ratcliffe
+ *
  */
 package comp3011;
 
@@ -19,22 +20,26 @@ import org.bytedeco.javacv.Frame;
  * Base class for all the video player's frame-based compositing effects.
  *
  * <p>
- * {@link VideoPlayerModel} initialises each processor once with video metadata,
- * then invokes {@link #process(Frame, InfoFrame)} for every image frame in a set order
- * before it is converted for display. Note that all FrameProcessors should be written
- * to be deterministic - that is they apply the same effect to the same frame number of
- * the same media name, but otherwise can look 'random'. This allows for the reliable
- * determination of accurately applied effects in the correct order free of any race
- * conditions, frame overwrites or frame tearing etc. Some helper methods are provided
- * for this.
+ * {@link PlaybackSession} initialises each processor for the current media/session;
+ * {@link FramePipeline} invokes {@link #process(Frame, InfoFrame)} on its owning stage
+ * for each image in the selected order, before display conversion. Processors must
+ * be deterministic: the same media, instance seed and frame should produce the same
+ * pixels, even if the pattern looks random. This supports reliable comparisons;
+ * determinism alone does not prevent races. Exclusive frame/effect ownership in
+ * the pipeline prevents simultaneous mutation and is a separate requirement.
  * </p>
  */
 public abstract class FrameProcessor {
+//----------COMMON EFFECT CONTRACT----------
+// abstract = a base type that cannot itself be instantiated with new.
+// Subclasses use extends FrameProcessor, inherit metadata/helper methods, and implement process(). protected allows access in subclasses (and package)
     protected InfoVideo videoInfo;
 
     public FrameProcessor() {
     }
 
+    // called before effect threads start. 
+    // !!! NOT safe to reinitialise an effect while an older session still processes frames with that instance
     public void initialise(InfoVideo videoInfo) throws Exception {
         this.videoInfo = videoInfo;
     }
@@ -43,6 +48,8 @@ public abstract class FrameProcessor {
     // 'movie.mp4' and a given position in the list of effects being applied, this will return a unique and different
     // seed for each effect. This is useful for creating the illusion of randomness whilst keeping everything
     // deterministic.
+    // A seed produces repeatable pseudo-random patterns, not cryptographic safety.
+    // Retain the starter's seed inputs so threaded/reference pixel tests agree.
     protected int saltedMediaSeed(String mediaName, int instanceIndex) {
         return hashMediaName(mediaName) + instanceIndex;
     }
@@ -54,5 +61,7 @@ public abstract class FrameProcessor {
         return (int) crc.getValue();
     }
 
+    // !!! No body here: dynamic dispatch calls the actual subclass implementation
+    // The frame is changed in place, callers must enforce exclusive ownership.
     public abstract void process(Frame frame, InfoFrame info) throws Exception;
 }
