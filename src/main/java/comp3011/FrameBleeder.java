@@ -4,7 +4,7 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787)
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -24,6 +24,8 @@ import org.bytedeco.javacv.Frame;
  * {@link #applyBleed(ByteBuffer)} adds the resulting coloured glow.
  * </p>
  */
+
+
 public class FrameBleeder extends FrameProcessor {
     private static final int MASK_BLOCK_SIZE = 4;
     private static final int BLUR_RADIUS = 3;
@@ -116,7 +118,7 @@ public class FrameBleeder extends FrameProcessor {
             maskBlends[position] = maskPosition - maskStart;
         }
     }
-
+/* For each frame, buildBrightMask(ByteBuffer) identifies bright regions*/
     private void buildBrightMask(ByteBuffer pixels) {
         int width = videoInfo.imageWidth();
         int height = videoInfo.imageHeight();

@@ -4,7 +4,7 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787)
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -14,21 +14,16 @@ import java.nio.ByteBuffer;
 
 import org.bytedeco.javacv.Frame;
 
-/**
- * Converts colour frames to greyscale.
- *
- * <p>
- * {@link #process(Frame, InfoFrame)} calculates each pixel's luminance from
- * its BGR channels and writes that value back to every colour channel through
- * {@link #convertFrame(ByteBuffer)}.
- * </p>
- */
+
+/* Converts colour frames to greyscale.*/
 public class FrameBlackAndWhiter extends FrameProcessor {
 
     public FrameBlackAndWhiter() {
         super();
     }
 
+    /*process(Frame, InfoFrame) calculates each pixel's luminance from its BGR channels and 
+writes that value back to every colour channel through convertFrame(ByteBuffer).*/
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {

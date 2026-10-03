@@ -4,10 +4,14 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. Touch Chanchoronaiy (a1978787), cache reset generated with Codex;
- *      student review required before submission.
+ *   2. Touch Chanchoronaiy (a1978787). Comments and modified code, with help from codex.
  *
  * Copyright 2026 Simon Ratcliffe
+ *
+ * Before: initialise() could retain the previous media's mask segment cache
+ * After: invalidate its segment sentinel before lookup rebuilding
+ * WHY: reuse across a new session must reproduce the correct media-specific pattern
+ * supplied pixel/noise algorithms remain unchanged
  */
 package comp3011;
 
@@ -55,6 +59,8 @@ public class FrameMottler extends FrameProcessor {
     private static final int MEDIUM_FIELD_SALT = 0x4d454449;
     private static final int LARGE_FIELD_SALT = 0x4c415247;
 
+    //constructor calls happen during serial CLI parsing. 
+    // per-instance index contributes to repeatable "random" patterns, do not recreate that on workers
     private static int nextInstanceIndex;
 
     private final int instanceIndex;
@@ -78,17 +84,24 @@ public class FrameMottler extends FrameProcessor {
         instanceIndex = nextInstanceIndex++;
     }
 
+    //----------INITIALISE MEDIA/RESET REUSED CACHE----------
+    // recap: @Override replaces base method
+    //  super.initialise stores common metadata.
     @Override
     public void initialise(InfoVideo videoInfo) throws Exception {
         super.initialise(videoInfo);
         mediaSeed = saltedMediaSeed(videoInfo.mediaName(), instanceIndex + SEED_SALT);
         // Reinitialising for a different movie must not keep the previous
-        // movie's cached damage fields just because the segment number matches.
+        // movie's cached damage fields just because the segment number matches
+        // !! MODIFIED- Invalidate the old segment so a new session rebuilds its media-specific mask
         cachedDamageMaskSegment = Integer.MIN_VALUE;
         buildSamplingLookups();
         buildScaleLookups();
     }
 
+    //----------PROCESS ONE IMAGE IN PLACE----------
+    // instanceof ByteBuffer pixels checks/captures a typed buffer. 
+    // Guard clauses reject unsupported layouts before pixel addressing. Exceptions reach the UI.
     @Override
     public void process(Frame frame, InfoFrame info) throws Exception {
         if (frame.image == null || frame.image.length == 0 || frame.image[0] == null) {
@@ -107,6 +120,8 @@ public class FrameMottler extends FrameProcessor {
             throw new Exception("FrameMottler requires at least three image channels");
         }
 
+        // frame number selects deterministic noise, not scheduling order
+        // Cached fields/lookup arrays are mutable: ONE pipeline stage owns this instance, so two frames NEVER call this process() concurrently on it
         double[] brightnessField = buildMultiScaleNoiseField(info.frameNumber(), BRIGHTNESS_FIELD_SALT);
         double[] stainField = buildMultiScaleNoiseField(info.frameNumber(), STAIN_FIELD_SALT);
         int damageMaskSegment = info.frameNumber() / DAMAGE_MASK_BLEND_FRAMES;
@@ -116,6 +131,9 @@ public class FrameMottler extends FrameProcessor {
         mottleFrame(pixels, brightnessField, stainField, damageMaskBlend);
     }
 
+    //----------PRECOMPUTED LOOKUPS----------
+    // Lookup tables move repeat calculations out of hot per-pixel loops.
+    // remaining supplied helpers below generate/blend fields and apply these scales
     private void buildSamplingLookups() {
         xGridLeft = new int[videoInfo.imageWidth()];
         xGridBlend = new double[videoInfo.imageWidth()];
