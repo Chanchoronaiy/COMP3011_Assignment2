@@ -1,4 +1,4 @@
-/* Tests generated with Codex for Touch Chanchoronaiy (a1978787); review before submission. */
+/* Touch Chanchoronaiy (a1978787) */
 package comp3011;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,6 +13,14 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * TEST PURPOSE - Exercise a real native decoder with generated media, seeking and EOF.
+ * Future.get waits for background completion with a deadline. finally cancels and
+ * disposes sessions even when an assertion fails, so tests do not leak worker threads.
+ * COVERS - The new PlaybackSession working with FramePipeline, effects, InfoFrame,
+ * InfoVideo and AudioPlayer copying. Checks timestamps, frame counts and BGR layout.
+ * Audio bytes are discarded here; these checks do not establish audible continuity.
+ */
 class PlaybackSessionTest {
     @TempDir Path directory;
 
@@ -67,6 +75,42 @@ class PlaybackSessionTest {
                             "Actual seek timestamp: " + work.info().timestampUs()); }
                     finally { work.release(); }
                 } finally { seek.cancel(); seekTask.get(5, TimeUnit.SECONDS); seek.dispose(); }
+            }
+        });
+    }
+
+    @Test void decoderReachesFrame720WithoutLosingOrRepeatingFrames() {
+        assertTimeoutPreemptively(Duration.ofSeconds(40), () -> {
+            Path file = directory.resolve("long-synthetic.mp4");
+            GeneratedVideo.create(file, 96, 54, 744, true);
+            // TITAN Part 2 watches for frame 720. This fast, non-real-time
+            // decoder test verifies the entire 31-second stream reaches EOF.
+            try (ExecutorService decoder = Executors.newSingleThreadExecutor()) {
+                PlaybackSession session = new PlaybackSession(file.toFile(), 0,
+                        List.of(new FrameFlickerer(), new FrameMottler(), new FrameNumberer()), true, 3);
+                Future<?> task = decoder.submit(session);
+                try {
+                    int count = 0;
+                    long previous = -1;
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+                    boolean end = false;
+                    while (!end && System.nanoTime() < deadline) {
+                        assertNull(session.error);
+                        session.audio.clear();
+                        FramePipeline.Work work = session.pipeline == null ? null : session.pipeline.poll();
+                        if (work == null) { Thread.sleep(1); continue; }
+                        if (work.end()) { end = true; continue; }
+                        try {
+                            assertEquals(count++, work.info().frameNumber()); // FFmpeg numbers from zero.
+                            assertEquals(3, work.frame().imageChannels, "Row padding is not a fourth BGR component");
+                            assertTrue(work.info().timestampUs() > previous);
+                            previous = work.info().timestampUs();
+                        } finally { work.release(); }
+                    }
+                    assertTrue(end, "Decoder/pipeline did not reach EOF");
+                    assertEquals(744, count);
+                    task.get(5, TimeUnit.SECONDS);
+                } finally { session.cancel(); task.get(5, TimeUnit.SECONDS); session.dispose(); }
             }
         });
     }
