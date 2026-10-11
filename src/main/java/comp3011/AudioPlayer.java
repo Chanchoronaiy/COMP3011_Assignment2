@@ -4,9 +4,10 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787), I added my own notes.
  *
  * Copyright 2026 Simon Ratcliffe
+ * 
  */
 package comp3011;
 
@@ -28,17 +29,24 @@ import org.bytedeco.javacv.Frame;
  * <p>
  * Converts supported packed or planar 16-bit sample buffers to the
  * interleaved, little-endian PCM format required by {@link SourceDataLine}.
- * {@link VideoPlayerModel} singleton schedules when the resulting audio is
- * written and owns the AudioPlayer.
+ * {@link VideoPlayerModel} owns the output-device instance and schedules writes
+ * on the JavaFX thread. {@link PlaybackSession} owns a separate copy-only instance
+ * that never opens a sound device. Neither instance is shared for concurrent use.
  * </p>
  */
 public class AudioPlayer implements AutoCloseable {
+// AutoCloseable defines close(): try-with-resources can invoke it on exit.
+// not automatic thread safety. Keep each instance's mutable buffers/line on one owning thread. 
+// PCM = uncompressed numeric audio samples.
     private static final long WRITE_TRACE_THRESHOLD_NS = 2_000_000L;
     private static final int AUDIO_WARMUP_BYTES = 4096;
 
-    private SourceDataLine line; // Java Sound's audio-output interface - for us a destination, not a source.
+    private SourceDataLine line; // Java Sound's audio-output interface. for us a destination, not a source.
     private byte[] outputBuffer = new byte[0];
 
+//----------OPEN THE OUTPUT DEVICE----------
+// AudioFormat arguments: samples/second, bits/sample, channels, signed, bigEndian=false (least-significant byte first). 
+// throws reports device errors.
     public void open(int sampleRate, int channels) throws LineUnavailableException {
         if (sampleRate <= 0 || channels <= 0) {
             return;
@@ -51,6 +59,9 @@ public class AudioPlayer implements AutoCloseable {
         warmUpLine();
     }
 
+//----------COPY BEFORE THE DECODER REUSES ITS BUFFER----------
+// byte[] is an array. Return a new owned array, not the reusable outputBuffer
+// WHY: copying a reference would let later decoding overwrite queued sound
     public byte[] copySamples(Frame frame) {
         if (frame.samples == null || frame.samples.length == 0) {
             return new byte[0];
@@ -66,15 +77,17 @@ public class AudioPlayer implements AutoCloseable {
         return samples;
     }
 
+//----------PARTIAL OUTPUT WRITES----------
+// Return the byte count actually written. 
+// The model retains an offset for the remainder and retries on another pulse rather than blocking the UI
     public int write(byte[] samples, int offset, int length) {
         if (line == null || samples.length == 0 || length <= 0) {
             return 0;
         }
 
-        // Try and avoid blocking writes to the audio stream by only adding equal or less than the number of bytes
-        // available. We return only the bytes we were able to write without overflowing the buffer, so the remaining
-        // bytes can be tracked and written later. This avoids audio buffer blocking in a cooperative multitasking
-        // architecture - i.e. we are being cooperative and not stalling the thread on line.write below!
+        // Try and avoid blocking writes to the audio stream by only adding equal or less than the number of bytes available.
+        // return only the bytes we were able to write without overflowing the buffer, so remaining bytes can be tracked and written later. 
+        // --- avoids audio buffer blocking in a cooperative multitasking architecture (ex. we are being cooperative and not stalling the thread on line.write below!)
         int availableBeforeWrite = line.available();
         int byteCount = Math.min(length, availableBeforeWrite);
         if (byteCount <= 0) {
@@ -95,6 +108,8 @@ public class AudioPlayer implements AutoCloseable {
         return written;
     }
 
+//----------DISCARD / CLOSE----------
+// flush discards queued sound on pause/seek; close also releases the device.
     public void flush() {
         if (line != null) {
             line.flush();
@@ -122,8 +137,11 @@ public class AudioPlayer implements AutoCloseable {
         line.flush(); // Get rid of the rest straight away, hopefully warm up is done.
     }
 
-    // This is a little tedious but handles channel interleaved stereo audio (normal) and also 'packed' audio where
-    // there is a chunk of left speaker followed by a chunk of right speaker (unusual, and needs conversion).
+//----------PACKED / PLANAR SAMPLE LAYOUT----------
+// Packed/interleaved stereo is L0,R0,L1,R1,... in one buffer. 
+// Planar keeps channels in separate buffers. interleave them for Java Sound's output.
+// instanceof checks the type; "instanceof ShortBuffer channelSamples" also binds a typed variable when the check succeeds.
+// duplicate() shares storage but has independent position, so reading does not move FFmpeg's position.
     private int copySamplesToOutputBuffer(Frame frame) {
         Buffer[] samples = frame.samples;
         int channels = frame.audioChannels;
@@ -153,6 +171,8 @@ public class AudioPlayer implements AutoCloseable {
         return 0;
     }
 
+    // A short contains 16 bits. & 0xff extracts the low byte; >> 8 shifts the
+    // high byte down. Store low then high to produce little-endian output.
     private int copyPackedSamples(ShortBuffer source) {
         int outputIndex = 0;
         while (source.hasRemaining()) {
@@ -163,6 +183,7 @@ public class AudioPlayer implements AutoCloseable {
         return outputIndex;
     }
 
+    // visit each time sample, then each channel: L0,R0 then L1,R1, not all L first
     private int copyPlanarSamples(ShortBuffer[] planarSamples, int sampleCount) {
         int outputIndex = 0;
         for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
@@ -175,6 +196,8 @@ public class AudioPlayer implements AutoCloseable {
         return outputIndex;
     }
 
+    // grow scratch only when needed, reducing allocation on the audio hot path
+    // copySamples still returns a separate array so scratch is never queued itself.
     private void ensureOutputBufferCapacity(int byteCount) {
         if (outputBuffer.length < byteCount) {
             outputBuffer = new byte[byteCount];
