@@ -4,7 +4,7 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787), I added notes  for further understanding.
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -38,11 +38,14 @@ import javafx.scene.shape.StrokeLineCap;
  * This is the JavaFX presentation layer for the video player. It builds the
  * scene graph containing the video surface, playback controls, status display,
  * and tooltips. It exposes controls and display-update methods for
- * {@link VideoPlayerController}, but contains no playback logic (which all lives
- * in the controller).
+ * {@link VideoPlayerController}. The controller routes user actions; the model,
+ * session and pipeline coordinate playback. The view never decodes/processes media.
  * </p>
  */
 public class VideoPlayerView {
+    //----------UI NODES / CONSTRUCTOR----------
+    // Node is a visible/layout object. Parent can contain child nodes.
+    // final fixes each stored reference, while text, icons and sizes can still be updated
     private static final int ICON_SIZE = 28;
 
     private final ImageView imageView = new ImageView();
@@ -59,6 +62,8 @@ public class VideoPlayerView {
     private final Button audioButton;
 
     public VideoPlayerView() {
+        // Bind fit size to the surrounding pane so resizing updates the image automatically. 
+        // Preserve ratio to avoid stretching the source picture.
         imageView.setPreserveRatio(true);
         imageView.setSmooth(false);
 
@@ -69,6 +74,7 @@ public class VideoPlayerView {
         imageView.fitWidthProperty().bind(videoPane.widthProperty());
         imageView.fitHeightProperty().bind(videoPane.heightProperty());
 
+        // Build icons/buttons. controller attaches their playback actions.
         startOverButton = iconButton(createLoopIcon(false, null));
         backFiveButton = iconButton(createLoopIcon(false, "5"));
         pausePlayButton = iconButton(createPauseIcon());
@@ -77,6 +83,7 @@ public class VideoPlayerView {
         audioButton = iconButton(createAudioIcon(false));
         setPlaybackControlsDisabled(true);
 
+        // HBox arranges controls horizontally; BorderPane puts them below video
         HBox controls = new HBox(
                 10,
                 startOverButton,
@@ -95,10 +102,14 @@ public class VideoPlayerView {
 
         configureTooltipLabel();
 
+        // StackPane overlays the tooltip layer above content without decoding work
         root = new StackPane(content, tooltipLayer);
         setButtonTooltips();
     }
 
+    //----------ACCESSORS / DISPLAY UPDATES----------
+    // Controller callbacks call these methods on the JavaFX application thread.
+    // Updating the view is different from applying an effect to native frame pixels
     public Parent getRoot() {
         return root;
     }
@@ -162,6 +173,8 @@ public class VideoPlayerView {
 
     // There are a bunch of tooltip handling methods starting from here. We want to use tooltips so that people with
     // mouse/trackpads can learn what the hotkeys are and hopefully just use them instead, because they are easy/fast.
+//----------TOOLTIPS / COORDINATE CONVERSION----------
+// handlers below display hotkey hints only,, then lambdas receive mouse events later. Nothing here starts an effect/decoder worker.
     private void setButtonTooltips() {
         setButtonTooltip(startOverButton, "[HOME]");
         setButtonTooltip(backFiveButton, "[LEFT]");
@@ -184,6 +197,8 @@ public class VideoPlayerView {
         button.setOnMousePressed(_ -> hideTooltip());
     }
 
+    // Mouse-transparent overlays do not intercept clicks meant for video/buttons.
+    // setStyle accepts JavaFX CSS property text, not Java executable statements
     private void configureTooltipLabel() {
         tooltipLayer.setMouseTransparent(true);
         tooltipLayer.getChildren().add(tooltipLabel);
@@ -209,6 +224,7 @@ public class VideoPlayerView {
         moveTooltip(sceneX, sceneY);
     }
 
+    // Convert scene coordinates to overlay-local coordinates, then clamp the hint inside the visible layer so it doesnt disappear beyond the window.
     private void moveTooltip(double sceneX, double sceneY) {
         Point2D point = tooltipLayer.sceneToLocal(sceneX + 12, sceneY + 16);
         double maxX = Math.max(0, tooltipLayer.getWidth() - tooltipLabel.getWidth() - 2);
@@ -222,6 +238,8 @@ public class VideoPlayerView {
         tooltipLabel.setVisible(false);
     }
 
+//----------REUSABLE BUTTON / ICON DRAWING----------
+// Helpers below build vector/canvas graphics instead of loading image files.
     private Button iconButton(Node icon) {
         Button button = new Button();
         icon.setMouseTransparent(true);
@@ -233,8 +251,8 @@ public class VideoPlayerView {
         return button;
     }
 
-    // Decided to hand code icons here instead of using pre-drawn assets/resources, since the icons are simple and
-    // universally recognised and this one they will look better on different DPI displays.
+    // Decided to hand code icons here instead of using pre-drawn assets/resources, 
+    // since the icons are simple and universally recognised and this one they will look better on different DPI displays.
     private Node createLoopIcon(boolean clockwise, String text) {
         Pane pane = new Pane();
         pane.setMinSize(ICON_SIZE, ICON_SIZE);
@@ -277,7 +295,7 @@ public class VideoPlayerView {
         return pane;
     }
 
-    // Simple two vertical bars 'pause' icon.
+    // two vertical bars 'pause' icon
     private Canvas createPauseIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -287,7 +305,7 @@ public class VideoPlayerView {
         return canvas;
     }
 
-    // Simple right facing equilateral triangle 'play' icon.
+    // right facing triangle 'play' icon
     private Canvas createPlayIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -299,7 +317,7 @@ public class VideoPlayerView {
         return canvas;
     }
 
-    // Simple square 'stop' icon.
+    //  'stop' icon
     private Canvas createStopIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();

@@ -4,14 +4,14 @@
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Touch Chanchoronaiy (a1978787). I added notes for understanding.
  *
  * Copyright 2026 Simon Ratcliffe
  */
 package comp3011;
 
 /**
- * Plain Java entry point for the packaged application. Seems overly complicated hopping through a main function that
+ * Plain Java entry point - public static void main(String[]) - for the packaged application . Seems overly complicated hopping through a main function that
  * calls a main function, but JavaFX likes it this way when the app is bundled into a fat .jar (still don't quite
  * understand why).
  *
@@ -24,6 +24,8 @@ package comp3011;
  */
 public class VideoPlayerAppLauncher {
 
+    // delegate to the real app's main. do not create a second player or effect list.
+    // This bridge does not bundle dependencies into the ordinary Maven JAR.
     public static void main(String[] args) {
         VideoPlayerApp.main(args);
     }
