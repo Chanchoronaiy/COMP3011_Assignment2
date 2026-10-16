@@ -60,6 +60,27 @@
           <argLine>--enable-native-access=ALL-UNNAMED</argLine>
         </configuration>
       </plugin>
+      <!-- Unit tests run before package. Real-player integration tests run AFTER
+           package, so plain mvn verify checks the complete player without making
+           TITAN's mvn package open test windows. A graphical desktop and sound
+           output are needed for verification. Source: Maven Failsafe usage docs. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+          <failIfNoTests>true</failIfNoTests>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
