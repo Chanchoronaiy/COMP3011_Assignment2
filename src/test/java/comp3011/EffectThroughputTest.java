@@ -1,4 +1,4 @@
-/* Test generated with Codex for Touch Chanchoronaiy (a1978787); review before submission. */
+/* Touch Chanchoronaiy (a1978787) */
 package comp3011;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,10 +12,13 @@ import org.bytedeco.javacv.Frame;
 import org.junit.jupiter.api.Test;
 
 /**
- * Component load comparison, not a claim that the entire GUI/audio player has
+ * TEST PURPOSE - Component load comparison, not a claim that the entire GUI/audio player has
  * been benchmarked. Both paths use the unchanged supplied Bleeder implementation
  * and identical 720p input. The reference applies effects serially, as the
- * starter does. Full-player comparisons are still listed in README.
+ * starter does. DesktopPlaybackIT separately measures the actual original and
+ * threaded players under identical load during ordinary mvn verify.
+ * COVERS - FramePipeline under repeated CPU-heavy Bleeder work. Reports measured
+ * speed rather than asserting that every machine must reach one fixed speedup.
  */
 class EffectThroughputTest {
     private static final int FRAMES = 32;
