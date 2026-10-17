@@ -1,171 +1,130 @@
-# COMP3011 Assignment 2 — Multi-threaded Video Player
+# COMP3011 Assignment 2 Video Player
 
-Working implementation milestone, not yet the final assessed submission.
-
-This desktop JavaFX player applies film effects selected on the command line.
-It extends Simon Ratcliffe's supplied `VideoPlayerSingleThread` project. It is
-not the Spring Boot website from Assignment 1.
-
-[Assignment brief and rubric](https://learn.adelaide.edu.au/courses/30747/assignments/94505)
+JavaFX video player with ordered command-line film effects and a multi-threaded
+processing pipeline, extending the supplied `VideoPlayerSingleThread` project.
 
 ## Build and run
 
-VS Code or Eclipse is fine. Open the folder containing this `pom.xml`, not an
-individual Java file. Use JDK 26 or newer for the supplied JavaFX 26 dependency
-(the source compilation release remains 25), and Maven 3.9.x.
+Use JDK 26 or newer for JavaFX 26, and Maven 3.9.x. The source compilation release
+remains 25. Run these commands from the folder containing `pom.xml`:
 
 ```sh
 mvn validate
 mvn compile
+mvn package
 mvn javafx:run '-Djavafx.args=--help'
 mvn javafx:run '-Djavafx.args=-anssnfwyvdjmbp /absolute/path/to/movie.mp4'
-mvn verify
+mvn clean verify
 ```
 
-`-a` enables audio. Effect flags can be short, long, stacked or mixed. Repeated
-flags create distinct effects, and order matters. `-ss` scratches twice.
-Quote a movie path containing spaces inside `javafx.args`.
+`-a` enables sound. Effect flags may be short, long, stacked or mixed; order and
+repetitions are preserved. Quote video paths containing spaces inside `javafx.args`.
+Home rewinds, Left/Right seek five seconds, Space pauses/resumes, A toggles audio,
+and Escape stops/exits. The visible window title is **Video Player**.
 
-`mvn package` builds `target/VideoPlayerMultiThreaded-0.1.jar`. The ordinary
-JAR does not bundle JavaFX/JavaCV; the assignment resolves dependencies through
-Maven. Do not use Assignment 1's standalone Spring JAR instructions here.
-The supplied optional `fat-jar` profile is retained but is not needed for the
-normal assessment workflow. `target/` is generated and ignored by Git.
+Packaging creates `target/VideoPlayerMultiThreaded-0.1.jar`. This is a standard
+Maven JAR with external JavaFX/JavaCV dependencies, not a standalone fat JAR.
+`target/` is generated and ignored by Git.
 
-The existing controls remain: Home (rewind), Left/Right (seek five seconds),
-Space (pause/play), A (audio), Escape (stop/exit). Original monitor, window-size,
-maximise, button and tooltip code is retained in the app/view/controller.
+## Main components and design choices
 
-## Which file does what?
-
-| File | Responsibility |
+| Component | Responsibility |
 | --- | --- |
-| `CommandLineController` | Parses launch/effect flags without reordering them |
-| `FrameProcessorOption` | Registers flags, help descriptions and effect constructors |
-| `VideoPlayerApp` / `VideoPlayerController` / `VideoPlayerView` | Window, existing controls and view callbacks |
-| `VideoPlayerModel` | UI-owned playback clock, presentation and audio output |
-| `PlaybackSession` | Background FFmpeg decoder and one play/seek generation |
-| `FramePipeline` | Bounded, ordered effect stages with explicit frame ownership |
-| Supplied `Frame...` subclasses | Actual pixel effects; only Mottler's reinitialisation cache was changed |
+| `CommandLineController` and `FrameProcessorOption` | Parse settings and construct ordered effect instances; the enum documents how to add an effect |
+| `VideoPlayerApp`, controller and view | Retain window management, buttons/hotkeys and display callbacks |
+| `VideoPlayerModel` | Own the UI clock, presentation, audio scheduling and session lifecycle requests |
+| `PlaybackSession` | Own one generation of native decoding and initialise its effects |
+| `FramePipeline` | Apply contiguous groups of effects in ordered, bounded stages |
+| Supplied effects, metadata records and `AudioPlayer` | Retain pixel algorithms and media/audio support; Mottler reinitialisation now invalidates its old segment cache |
 
-## Threading design and why it should be safe
+Previously the UI heartbeat decoded media and applied hard-coded effects on the
+same thread. Now the CLI selects effects, while background decoding/stages leave
+the UI available for presentation and controls. The parser creates a separate
+processor for every occurrence, so repeated flags do not share mutable effect state.
 
 ```text
-serial decoder -> bounded queue -> effect stage(s) -> bounded queue -> JavaFX presentation
-      |
-      +-- copied PCM -> bounded audio queue -> JavaFX audio scheduling
+serial decoder -> bounded FIFO -> effect stages -> bounded FIFO -> JavaFX presentation
+       |
+       +-> copied PCM -> bounded audio queue -> JavaFX audio scheduling
 ```
 
-This follows Practical 7's production-line idea. Stage 2 can process frame 1
-while stage 1 processes frame 2. A particular frame still visits all selected
-effects in order. No independent worker pool may mutate the same effect's
-scratch arrays concurrently.
+Stages process different frames concurrently, following Practical 7's production
+line idea. Each frame still visits its selected effects in order. A general pool
+sharing the supplied mutable effects would risk races; one global lock would
+serialize the expensive work again. Contiguous stage groups preserve order.
+Equal-count grouping is simple rather than optimal: one expensive effect can
+remain a bottleneck. CPU-bound stages use platform threads, with a budget bounded
+by effect count and nominal available processor capacity.
 
-1. **Native decoder:** Only the serial decoder thread creates, starts, grabs,
-   seeks and closes its FFmpeg grabber. `Frame.clone()` copies decoded pixels
-   before the next native grab can reuse its buffer. Audio samples are copied
-   before that reuse too.
-2. **Mutable effects:** One stage owns each effect instance. Bleeder's masks,
-   Jitterer's source array and Mottler's cached fields are not shared between
-   simultaneous stage calls. Repeated options create different instances.
-   Effect initialisation happens before the stage threads start.
-3. **Frame transfer:** Successful queue insertion transfers exclusive ownership
-   to the receiver. The sender does not access those pixels again. Java's
-   BlockingQueue guarantee publishes earlier writes to the receiving thread.
-   FIFO queues and one consumer per stage preserve frame order by induction.
-4. **UI:** The model's clock/control fields and all view callbacks belong to the
-   JavaFX application thread. Its heartbeat uses `poll()`, never `take()` or
-   `join()`. Image conversion creates a separate WritableImage in JavaCV
-   1.5.13; the native frame is released after conversion and never backs an image
-   being modified by an effect worker.
-5. **Seek/stop:** The UI cancels and forgets the old session immediately. Queue
-   waits wake through interrupts/cancellation. Serial background cleanup joins
-   old workers and frees queued frames before another session can initialise
-   the same effects. This is the generation/clearance barrier, analogous to
-   waiting for old occupants to leave in Practical 8. Native seek can land
-   early, so pre-target frames/audio are decoded but not published.
-6. **Deadlock reasoning:** There is no application lock held across a queue wait
-   or worker join. Data moves down an acyclic pipeline. Normal back pressure is
-   released by the UI consumer. During cancellation every waiting stage is
-   interrupted and the decoder checks cancellation between timed offers.
-   This argument assumes native calls and each supplied effect eventually
-   return; it does not prove arbitrary native libraries can never hang.
-7. **Bounded memory:** Each of `S + 1` frame queues holds at most two frames;
-   each of `S` stages owns at most one. Add a decoder-side frame and one UI
-   image. Native frame memory therefore scales with stage count, not movie
-   length. The audio queue holds at most 256 copied chunks. Full queues slow
-   producers rather than allocating indefinitely.
+## Overall concurrency correctness
 
-Worker count is bounded by selected effects and `availableProcessors() - 1`
-(at least one), leaving nominal capacity for decoding/UI. These CPU-bound
-effects use platform threads: virtual threads do not create extra CPU cores.
-Stages have contiguous groups of effects so the command-line order remains
-unchanged. Equal-count grouping is deliberately simple, **not** optimal load
-balancing: one expensive effect can be a bottleneck, and a single selected
-effect is not made internally parallel.
+The critical regions are native decoder access, effect state, frame mutation and
+lifetime, cross-thread hand-offs, and UI state. Protection comes from ownership
+and safe publication rather than synchronizing every method:
 
-## Tests and current evidence
+- **Native buffers:** only the serial decoder accesses its FFmpeg grabber. It
+  clones image pixels and copies PCM before another grab can reuse their storage.
+- **Effect state:** one stage owns each effect instance. Initialisation completes
+  before stage threads start; no two workers concurrently mutate its scratch arrays.
+- **Frame transfer:** successful queue insertion transfers exclusive ownership.
+  The sender stops accessing the pixels. BlockingQueue publication makes prior
+  writes visible; FIFO queues and one consumer per stage preserve frame order.
+- **UI confinement:** controls, clocks, displayed images and callbacks belong to
+  the JavaFX thread. It polls completed work without blocking queue waits or joins.
+  Conversion creates an independent image before the native frame is released.
+- **Seek and cleanup:** cancel the old session, then serialise its cleanup before
+  starting the next generation. Old workers finish before shared effects are
+  reinitialised. The UI never waits for their termination. A paused preview queues
+  one image without audio, preventing an audio lead-in from blocking that image.
+- **Visibility:** volatile fields publish session state and cancellation; atomic
+  compare-and-set preserves the first failure. Neither replaces frame/effect ownership.
 
-`mvn verify` runs nine tests across four chosen areas. Reports are generated in
-`target/surefire-reports/`.
+Frame queues hold at most two messages each and the PCM queue holds at most 256
+chunks. Full queues slow producers rather than allowing memory to grow with movie
+length. No application lock is held across queue waits or joins; the pipeline is
+acyclic, and cancellation interrupts stage waits while the decoder checks timed
+offers. This reasoning assumes native calls and effect operations eventually
+return; it is not a formal proof that external libraries can never hang.
 
-| Test class | What it checks |
-| --- | --- |
-| `CommandLineControllerTest` (4) | Equivalent flag forms, repeats, original options, errors and help |
-| `FramePipelineTest` (3) | All supplied effects match sequential pixels/order; stages overlap; cancellation/failure |
-| `PlaybackSessionTest` (1) | Real generated H.264/AAC decode, every frame present, timestamp order, seek and cancellation |
-| `EffectThroughputTest` (1) | Warmed component throughput: supplied effects sequentially vs the pipeline |
+## Verification and evidence
 
-The test fixture is synthetic moving colour and a tone, not a personal or
-copyrighted recording. The component comparison uses the same 720p input,
-four unchanged Bleeder effects, three alternating measured trials and median
-timings. On 14 October 2026 one run gave 33.2 fps sequentially and 112.6 fps
-through the four-worker pipeline (3.39x). Timings vary with machine/load.
-The benchmark reports speed rather than making a fragile universal timing
-assertion. Pixel correctness is checked separately against all eleven effects.
+Ordinary `mvn verify` runs **all 31 checks** without an enabling flag. Surefire runs
+23 unit/component checks before packaging; Failsafe runs eight real JavaFX
+integration checks afterwards. **Full verification needs a graphical desktop and
+sound output.** It opens/resizes test windows, plays a tone, and takes roughly two
+minutes. `mvn package` does not run those integration windows.
 
-This is **not** an automated comparison against the entire original JavaFX
-player. It excludes presentation, audio and interactive resizing and does not
-establish the full-player High Distinction performance criterion.
+Tests cover exact CLI help and ordered/repeated flags; pixel equality and frame
+order; cache boundaries; PCM copying/layout; seeking, cancellation and worker
+cleanup; real playback, controls and the original-versus-threaded load comparison.
+The original model is isolated under `src/test/java/comp3011/reference/` with only
+class/package/effect-injection adaptations, and is excluded from the production JAR.
 
-## Remaining work before calling this finished
+The full run on 20 October 2026 passed 31 checks without failures, errors or skips.
+The actual-player comparison used identical 72-frame 720p media, sixteen Bleeder
+effects, alternating trials and resizing: **10.56 fps baseline versus 24.88 fps
+threaded, a 2.36x median improvement**. All 744 frames of a separate real-time
+playback completed in 31.31 seconds. These are workload/machine-dependent results,
+not universal speed guarantees. Later window-title-only edits were compilation checked.
 
-- Run a longer HD video on both the unchanged Desktop starter and this player,
-  with exactly the same effect sequence and hardware. Compare headroom,
-  audio continuity and how many effects can be stacked before sustained stalls.
-- Exercise rapid pause/seek/rewind/audio changes, EOF, window dragging/resizing,
-  maximise and both monitor settings. Retained code alone is not test evidence.
-- Extend the automated comparison to the full player if aiming for the highest
-  performance rubric band. Tune stage grouping only after measurement.
-- Review unusual media, including audio-only lead-ins and seeking while paused.
-  The audio clock can start before the first image to drain a playing lead-in;
-  paused lead-in preview still needs further testing. Device opening/closing
-  and image conversion run on the UI thread. Native cancellation latency is
-  also platform-dependent.
-- Check Windows/TITAN and the final submission instructions. No TITAN result
-  has been obtained for this project yet; no mark is promised.
-- Revisit Topic 9 when accessible; its overview was denied to this account on
-  14 October. Do not cite unseen content as a design source.
-- Student: read and explain the modifications, adjust them as appropriate and
-  use genuine incremental commits. No commits or pushes were created here.
+The student reported TITAN Part 1 **38/38** and Part 2 **306% performance**, and
+confirmed continuous sound while dragging/resizing a separate one-minute clip.
+Physical multi-monitor/maximise configurations still need a manual check where
+available. Image conversion and sound-device operations remain on the UI thread;
+driver/native latency is platform-dependent.
 
-## Concepts and attribution
+Generated reports are in `target/surefire-reports/` and `target/failsafe-reports/`.
 
-Course concepts: Topic 5 separation of responsibilities and completion ordering;
-Topic 6 evidence-backed claims and attribution; Topic 7 processes/threads,
-CPU-bound parallelism, blocking and bounded resources; Topic 8 ownership,
-interleavings, safety and deadlock/clearance reasoning. FSP/LTSA is a modelling
-tool, not a library used by this player. No formal LTSA proof is claimed.
+## Sources and attribution
 
-Implementation references:
+Original project: Simon Ratcliffe in collaboration with GPT-5.6 Terra, copyright
+2026 Simon Ratcliffe. Source headers retain original credit and identify modified
+or new code. Codex assisted with the implementation changes, fixes, tests,
+documentation and learning comments for Touch Chanchoronaiy (a1978787). Student
+review and understanding remain necessary before submission.
 
-- [Java SE BlockingQueue](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/BlockingQueue.html)
-- [JavaFX Node thread rules](https://openjfx.io/javadoc/26/javafx.graphics/javafx/scene/Node.html)
-- Supplied JavaCV 1.5.13 bytecode: JavaFXFrameConverter constructs a fresh
-  WritableImage; FFmpegFrameGrabber timestamp overloads were inspected.
-
-Original source: Simon Ratcliffe in collaboration with GPT-5.6 Terra,
-copyright 2026 Simon Ratcliffe. Original headers remain. New and modified
-code was generated with Codex for Touch Chanchoronaiy (a1978787), and is labelled
-as such in headers. That does not imply the student has already reviewed or
-understood it; that review is required before submission.
+- [Assignment brief and rubric](https://learn.adelaide.edu.au/courses/30747/assignments/94505)
+- [Java BlockingQueue publication guarantees](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/BlockingQueue.html)
+- [JavaFX thread rules](https://openjfx.io/javadoc/26/javafx.graphics/javafx/scene/Node.html)
+- [Maven Failsafe lifecycle](https://maven.apache.org/surefire/maven-failsafe-plugin/usage.html)
+- Supplied JavaCV 1.5.13 bytecode was inspected for frame conversion and seeking.
